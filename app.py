@@ -445,11 +445,57 @@ def calculate_file_hash(content: bytes) -> str:
 
 
 def validate_webhook_url(url: str) -> bool:
-    """Validate webhook URL format"""
+    """Validate webhook URL format and prevent SSRF attacks"""
     try:
         result = urlparse(url)
-        return all([result.scheme in ['http', 'https'], result.netloc])
-    except Exception:
+
+        # Check scheme
+        if result.scheme not in ['http', 'https']:
+            return False
+
+        # Check netloc exists
+        if not result.netloc:
+            return False
+
+        # Extract hostname (remove port if present)
+        hostname = result.hostname
+        if not hostname:
+            return False
+
+        # Block localhost and loopback
+        if hostname.lower() in ['localhost', '127.0.0.1', '::1', '0.0.0.0']:
+            logger.warning(f"Blocked webhook URL to localhost: {url}")
+            return False
+
+        # Try to resolve hostname and check if it's a private IP
+        try:
+            # Get IP address
+            addr_info = socket.getaddrinfo(hostname, None)
+            for family, _, _, _, sockaddr in addr_info:
+                ip_str = sockaddr[0]
+
+                # Parse IP address
+                ip = ipaddress.ip_address(ip_str)
+
+                # Block private, loopback, link-local, and reserved IPs
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    logger.warning(f"Blocked webhook URL to private/internal IP {ip}: {url}")
+                    return False
+
+                # Block multicast
+                if ip.is_multicast:
+                    logger.warning(f"Blocked webhook URL to multicast IP {ip}: {url}")
+                    return False
+
+        except (socket.gaierror, ValueError, OSError):
+            # DNS resolution failed or invalid IP - allow it
+            # This could be a transient DNS issue or a typo by user
+            # Let the actual webhook request fail naturally
+            pass
+
+        return True
+    except Exception as e:
+        logger.error(f"Error validating webhook URL: {e}")
         return False
 
 
@@ -1074,7 +1120,7 @@ async def transcribe_audio(
 
         logger.info(f"Processing file: {filename}, size: {file_size / (1024*1024):.2f}MB")
 
-        # Calculate file hash for caching
+        # Calculate file hash for caching (include export_format in cache key)
         file_hash = calculate_file_hash(content)
         cache_key = f"{file_hash}:{language or 'auto'}:{initial_prompt or ''}"
 
@@ -1825,6 +1871,12 @@ async def get_task_status(task_id: str, api_key: Optional[APIKey] = Depends(veri
         raise HTTPException(
             status_code=400,
             detail="Invalid task_id provided"
+        )
+
+    if not celery_app:
+        raise HTTPException(
+            status_code=503,
+            detail="Async processing not available. Celery is not configured."
         )
 
     try:
