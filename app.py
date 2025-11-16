@@ -15,6 +15,7 @@ from collections import defaultdict, deque
 from functools import wraps
 import asyncio
 import aiohttp
+from urllib.parse import urlparse
 
 # Third-party imports
 try:
@@ -38,12 +39,19 @@ except ImportError:
     PROMETHEUS_AVAILABLE = False
     logging.warning("Prometheus client not available. Metrics will be disabled.")
 
-# Setup logging
+# Setup logging with custom filter for correlation_id
+class CorrelationIdFilter(logging.Filter):
+    def filter(self, record):
+        if not hasattr(record, 'correlation_id'):
+            record.correlation_id = 'N/A'
+        return True
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] %(message)s'
 )
 logger = logging.getLogger(__name__)
+logger.addFilter(CorrelationIdFilter())
 
 # Configuration
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB limit
@@ -195,7 +203,7 @@ async def add_correlation_id(request: Request, call_next):
 
     def record_factory(*args, **kwargs):
         record = old_factory(*args, **kwargs)
-        record.correlation_id = correlation_id
+        record.correlation_id = getattr(record, 'correlation_id', correlation_id)
         return record
 
     logging.setLogRecordFactory(record_factory)
@@ -268,6 +276,15 @@ async def rate_limiter(request: Request, api_key: str = Depends(verify_api_key))
 def calculate_file_hash(content: bytes) -> str:
     """Calculate SHA256 hash of file content"""
     return hashlib.sha256(content).hexdigest()
+
+
+def validate_webhook_url(url: str) -> bool:
+    """Validate webhook URL format"""
+    try:
+        result = urlparse(url)
+        return all([result.scheme in ['http', 'https'], result.netloc])
+    except Exception:
+        return False
 
 
 def get_cached_result(cache_key: str) -> Optional[Dict]:
@@ -491,6 +508,13 @@ async def transcribe_audio(
                 detail="Invalid export_format. Must be one of: json, srt, vtt"
             )
 
+        # Validate webhook URL if provided
+        if webhook_url and not validate_webhook_url(webhook_url):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid webhook URL. Must be a valid HTTP or HTTPS URL."
+            )
+
         # Read file content
         content = await file.read()
         file_size = len(content)
@@ -506,7 +530,7 @@ async def transcribe_audio(
             raise HTTPException(status_code=400, detail="Empty file uploaded")
 
         # Validate file content (basic magic number check)
-        if content[:3] not in [b'ID3', b'\xff\xfb', b'\xff\xf3', b'Rif', b'RIFF', b'fLaC', b'OggS']:
+        if content[:4] not in [b'ID3\x03', b'ID3\x04', b'RIFF', b'fLaC', b'OggS'] and content[:2] not in [b'\xff\xfb', b'\xff\xf3', b'\xff\xf2']:
             logger.warning(f"Suspicious file content, may not be a valid audio file")
 
         logger.info(f"File size: {file_size / (1024*1024):.2f}MB")
@@ -557,9 +581,8 @@ async def transcribe_audio(
             })
 
         # Synchronous processing
-        suffix = os.path.splitext(file.filename)[1] if file.filename else ".wav"
-        if not suffix:
-            suffix = ".wav"
+        filename = file.filename or "audio.wav"
+        suffix = os.path.splitext(filename)[1] or ".wav"
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
             temp_file.write(content)
@@ -626,8 +649,6 @@ async def transcribe_audio(
         return JSONResponse(content=response_data)
 
     except HTTPException:
-        if PROMETHEUS_AVAILABLE:
-            active_requests.dec()
         if temp_file_path and os.path.exists(temp_file_path):
             try:
                 os.unlink(temp_file_path)
@@ -637,7 +658,6 @@ async def transcribe_audio(
 
     except Exception as e:
         if PROMETHEUS_AVAILABLE:
-            active_requests.dec()
             request_counter.labels(endpoint='transcribe', status='error').inc()
 
         usage_stats["failed_requests"] += 1
@@ -689,6 +709,20 @@ async def transcribe_batch(
     if len(files) > 10:
         raise HTTPException(status_code=400, detail="Maximum 10 files per batch request")
 
+    # Validate language code
+    if language and language not in SUPPORTED_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported language code: {language}. Use /languages endpoint to see supported languages."
+        )
+
+    # Validate webhook URL if provided
+    if webhook_url and not validate_webhook_url(webhook_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid webhook URL. Must be a valid HTTP or HTTPS URL."
+        )
+
     results = []
 
     for file in files:
@@ -720,7 +754,8 @@ async def transcribe_batch(
                 })
             else:
                 # Immediate processing
-                suffix = os.path.splitext(file.filename)[1] or ".wav"
+                filename = file.filename or "audio.wav"
+                suffix = os.path.splitext(filename)[1] or ".wav"
                 with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
                     temp_file.write(content)
                     temp_file_path = temp_file.name
@@ -766,27 +801,40 @@ async def get_task_status(task_id: str, api_key: str = Depends(verify_api_key)):
             detail="Async processing not available. Celery is not configured."
         )
 
-    from celery.result import AsyncResult
-    task = AsyncResult(task_id, app=celery_app)
+    if not task_id or not task_id.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid task_id provided"
+        )
 
-    if task.ready():
-        if task.successful():
-            return {
-                "task_id": task_id,
-                "status": "completed",
-                "result": task.result
-            }
+    try:
+        from celery.result import AsyncResult
+        task = AsyncResult(task_id, app=celery_app)
+
+        if task.ready():
+            if task.successful():
+                return {
+                    "task_id": task_id,
+                    "status": "completed",
+                    "result": task.result
+                }
+            else:
+                return {
+                    "task_id": task_id,
+                    "status": "failed",
+                    "error": str(task.info)
+                }
         else:
             return {
                 "task_id": task_id,
-                "status": "failed",
-                "error": str(task.info)
+                "status": "processing"
             }
-    else:
-        return {
-            "task_id": task_id,
-            "status": "processing"
-        }
+    except Exception as e:
+        logger.error(f"Error retrieving task status for {task_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error retrieving task status: {str(e)}"
+        )
 
 
 @app.get("/languages")
