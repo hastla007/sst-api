@@ -431,6 +431,20 @@ async def rate_limiter(
         requests.append(current_time)
         request_count = len(requests)
 
+        # Cleanup old keys to prevent memory leak (every 100th request)
+        if usage_stats["total_requests"] % 100 == 0:
+            # Remove keys with no recent activity
+            keys_to_remove = []
+            for key, req_deque in rate_limit_storage.items():
+                if not req_deque or (req_deque and req_deque[-1] < current_time - RATE_LIMIT_WINDOW):
+                    keys_to_remove.append(key)
+
+            for key in keys_to_remove:
+                del rate_limit_storage[key]
+
+            if keys_to_remove:
+                logger.info(f"Rate limiter cleanup: removed {len(keys_to_remove)} old keys")
+
     if request_count > rate_limit:
         raise HTTPException(
             status_code=429,
@@ -1069,13 +1083,26 @@ async def transcribe_audio(
         # Get file content
         if file_url:
             content, filename = await download_from_url(file_url)
+            file_size = len(content)
         else:
+            # Validate file size BEFORE reading content (prevent memory exhaustion)
             filename = file.filename
+
+            # Check Content-Length header if available
+            if hasattr(file, 'size') and file.size is not None:
+                if file.size > MAX_FILE_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f}MB"
+                    )
+                if file.size == 0:
+                    raise HTTPException(status_code=400, detail="Empty file")
+
+            # Read file content
             content = await file.read()
+            file_size = len(content)
 
-        file_size = len(content)
-
-        # Validate file size
+        # Validate file size (double-check after reading)
         if file_size > MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=413,
@@ -1122,9 +1149,9 @@ async def transcribe_audio(
 
         logger.info(f"Processing file: {filename}, size: {file_size / (1024*1024):.2f}MB")
 
-        # Calculate file hash for caching (include export_format in cache key)
+        # Calculate file hash for caching (include export_format to prevent format mismatch)
         file_hash = calculate_file_hash(content)
-        cache_key = f"{file_hash}:{language or 'auto'}:{initial_prompt or ''}"
+        cache_key = f"{file_hash}:{language or 'auto'}:{initial_prompt or ''}:{export_format}"
 
         # Check cache
         cached_result = None
@@ -1564,9 +1591,19 @@ async def transcribe_batch(
 
     for file in files:
         try:
+            # Validate file size BEFORE reading content (prevent memory exhaustion)
+            if hasattr(file, 'size') and file.size is not None and file.size > MAX_FILE_SIZE:
+                results.append({
+                    "filename": file.filename,
+                    "status": "error",
+                    "error": f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f}MB"
+                })
+                continue
+
             content = await file.read()
             file_size = len(content)
 
+            # Double-check file size after reading
             if file_size > MAX_FILE_SIZE:
                 results.append({
                     "filename": file.filename,
