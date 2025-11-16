@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise STT API v3.0 - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .feature-tag {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 0.9em;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .upload-section {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        input[type="file"],
+        input[type="text"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .checkbox-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .checkbox-label {
+            display: flex;
+            align-items: center;
+            font-weight: normal;
+        }
+
+        .checkbox-label input {
+            width: auto;
+            margin-right: 8px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 600;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result-section {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin-top: 30px;
+            display: none;
+        }
+
+        .result-section.active {
+            display: block;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .result-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .segment {
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            border-radius: 5px;
+        }
+
+        .segment-time {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .segment-speaker {
+            font-weight: 600;
+            color: #764ba2;
+            margin-bottom: 5px;
+        }
+
+        .segment-text {
+            line-height: 1.6;
+        }
+
+        .confidence-bar {
+            height: 5px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            margin-top: 8px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.8em;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .sentiment-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .sentiment-positive {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .sentiment-negative {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Enterprise STT API v3.0</h1>
+            <p>Advanced Speech-to-Text with AI-Powered Features</p>
+        </div>
+
+        <div class="features-grid">
+            <div class="feature-tag">Auto Language Detection</div>
+            <div class="feature-tag">Speaker Diarization</div>
+            <div class="feature-tag">99 Languages</div>
+            <div class="feature-tag">Confidence Scores</div>
+            <div class="feature-tag">Translation</div>
+            <div class="feature-tag">Sentiment Analysis</div>
+            <div class="feature-tag">Cloud Storage</div>
+            <div class="feature-tag">Real-time Streaming</div>
+        </div>
+
+        <div class="content">
+            <div class="upload-section">
+                <h2 style="margin-bottom: 20px;">Transcribe Audio</h2>
+
+                <form id="transcribeForm">
+                    <div class="form-group">
+                        <label for="audioFile">Audio File</label>
+                        <input type="file" id="audioFile" accept="audio/*">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fileUrl">Or provide URL (S3, GCS, Azure, HTTP)</label>
+                        <input type="text" id="fileUrl" placeholder="s3://bucket/file.mp3 or https://example.com/audio.wav">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="language">Language (leave empty for auto-detection)</label>
+                        <select id="language">
+                            <option value="">Auto Detect</option>
+                            <option value="en">English</option>
+                            <option value="es">Spanish</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="zh">Chinese</option>
+                            <option value="ja">Japanese</option>
+                            <option value="ko">Korean</option>
+                            <option value="pt">Portuguese</option>
+                            <option value="it">Italian</option>
+                            <option value="ru">Russian</option>
+                            <option value="ar">Arabic</option>
+                            <option value="hi">Hindi</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="initialPrompt">Custom Vocabulary / Context (optional)</label>
+                        <textarea id="initialPrompt" rows="3" placeholder="E.g., 'This is a medical conference about cardiovascular diseases...'"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="exportFormat">Export Format</label>
+                        <select id="exportFormat">
+                            <option value="json">JSON</option>
+                            <option value="srt">SRT (Subtitles)</option>
+                            <option value="vtt">VTT (Web Subtitles)</option>
+                            <option value="txt">Plain Text</option>
+                            <option value="docx">Word Document</option>
+                            <option value="pdf">PDF</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Advanced Features</label>
+                        <div class="checkbox-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="enableDiarization"> Speaker Diarization
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="enableTranslation"> Translation
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="enableSentiment"> Sentiment Analysis
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="returnConfidence" checked> Confidence Scores
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="useCache" checked> Use Cache
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="translationLangGroup" style="display:none;">
+                        <label for="targetLanguage">Translate to</label>
+                        <select id="targetLanguage">
+                            <option value="es">Spanish</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="zh">Chinese</option>
+                            <option value="ja">Japanese</option>
+                            <option value="ko">Korean</option>
+                            <option value="pt">Portuguese</option>
+                            <option value="it">Italian</option>
+                            <option value="ru">Russian</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="apiKey">API Key (if required)</label>
+                        <input type="text" id="apiKey" placeholder="Your API key">
+                    </div>
+
+                    <button type="submit" class="btn" id="submitBtn">Transcribe Audio</button>
+                </form>
+            </div>
+
+            <div class="result-section" id="resultSection">
+                <div class="result-header">
+                    <h2>Transcription Results</h2>
+                </div>
+
+                <div id="statsContainer"></div>
+                <div id="resultContent" class="result-content"></div>
+            </div>
+
+            <div class="loading" id="loadingIndicator" style="display:none;">
+                <div class="spinner"></div>
+                <p>Processing your audio...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = window.location.origin;
+
+        // Show/hide translation language selector
+        document.getElementById('enableTranslation').addEventListener('change', (e) => {
+            document.getElementById('translationLangGroup').style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('transcribeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const audioFile = document.getElementById('audioFile').files[0];
+            const fileUrl = document.getElementById('fileUrl').value.trim();
+
+            if (!audioFile && !fileUrl) {
+                alert('Please provide either an audio file or a file URL');
+                return;
+            }
+
+            const formData = new FormData();
+
+            if (audioFile) {
+                formData.append('file', audioFile);
+            }
+
+            if (fileUrl) {
+                formData.append('file_url', fileUrl);
+            }
+
+            const language = document.getElementById('language').value;
+            if (language) formData.append('language', language);
+
+            const initialPrompt = document.getElementById('initialPrompt').value.trim();
+            if (initialPrompt) formData.append('initial_prompt', initialPrompt);
+
+            formData.append('export_format', document.getElementById('exportFormat').value);
+            formData.append('enable_diarization', document.getElementById('enableDiarization').checked);
+            formData.append('enable_translation', document.getElementById('enableTranslation').checked);
+            formData.append('enable_sentiment', document.getElementById('enableSentiment').checked);
+            formData.append('return_confidence', document.getElementById('returnConfidence').checked);
+            formData.append('use_cache', document.getElementById('useCache').checked);
+
+            if (document.getElementById('enableTranslation').checked) {
+                formData.append('target_language', document.getElementById('targetLanguage').value);
+            }
+
+            const apiKey = document.getElementById('apiKey').value.trim();
+
+            // Show loading
+            document.getElementById('loadingIndicator').style.display = 'block';
+            document.getElementById('resultSection').classList.remove('active');
+            document.getElementById('submitBtn').disabled = true;
+
+            try {
+                const headers = {};
+                if (apiKey) {
+                    headers['X-API-Key'] = apiKey;
+                }
+
+                const response = await fetch(`${API_BASE_URL}/transcribe`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: formData
+                });
+
+                const contentType = response.headers.get('content-type');
+
+                if (contentType && contentType.includes('application/json')) {
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(result.detail || 'Transcription failed');
+                    }
+
+                    displayResults(result);
+                } else {
+                    // File download (PDF, DOCX, etc.)
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `transcription.${document.getElementById('exportFormat').value}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+
+                    alert('File downloaded successfully!');
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+                console.error('Error:', error);
+            } finally {
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.getElementById('submitBtn').disabled = false;
+            }
+        });
+
+        function displayResults(data) {
+            const resultSection = document.getElementById('resultSection');
+            const statsContainer = document.getElementById('statsContainer');
+            const resultContent = document.getElementById('resultContent');
+
+            // Build stats
+            let statsHTML = '<div class="stats-grid">';
+            statsHTML += `<div class="stat-card"><div class="stat-value">${data.language || 'N/A'}</div><div class="stat-label">Language</div></div>`;
+            if (data.audio_duration) {
+                statsHTML += `<div class="stat-card"><div class="stat-value">${data.audio_duration.toFixed(1)}s</div><div class="stat-label">Duration</div></div>`;
+            }
+            if (data.processing_time) {
+                statsHTML += `<div class="stat-card"><div class="stat-value">${data.processing_time.toFixed(2)}s</div><div class="stat-label">Processing Time</div></div>`;
+            }
+            if (data.segments) {
+                statsHTML += `<div class="stat-card"><div class="stat-value">${data.segments.length}</div><div class="stat-label">Segments</div></div>`;
+            }
+            statsHTML += '</div>';
+
+            // Sentiment
+            if (data.sentiment) {
+                const sentimentClass = data.sentiment.label === 'POSITIVE' ? 'sentiment-positive' : 'sentiment-negative';
+                statsHTML += `<div style="margin-bottom: 20px;">
+                    <strong>Sentiment:</strong>
+                    <span class="sentiment-badge ${sentimentClass}">
+                        ${data.sentiment.label} (${(data.sentiment.score * 100).toFixed(1)}%)
+                    </span>
+                </div>`;
+            }
+
+            // Translation
+            if (data.translation) {
+                statsHTML += `<div style="background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                    <strong>Translation (${data.translation.target_language}):</strong>
+                    <p style="margin-top: 10px;">${data.translation.text}</p>
+                </div>`;
+            }
+
+            statsContainer.innerHTML = statsHTML;
+
+            // Build segments
+            let contentHTML = '';
+
+            if (data.text) {
+                contentHTML += `<h3 style="margin-bottom: 15px;">Full Transcription:</h3>`;
+                contentHTML += `<p style="line-height: 1.8; margin-bottom: 30px;">${data.text}</p>`;
+            }
+
+            if (data.segments && data.segments.length > 0) {
+                contentHTML += `<h3 style="margin-bottom: 15px;">Detailed Segments:</h3>`;
+
+                data.segments.forEach((segment, index) => {
+                    const confidence = data.confidence_scores && data.confidence_scores[index]
+                        ? data.confidence_scores[index].confidence
+                        : null;
+
+                    contentHTML += `<div class="segment">`;
+                    contentHTML += `<div class="segment-time">${formatTime(segment.start)} - ${formatTime(segment.end)}</div>`;
+
+                    if (segment.speaker) {
+                        contentHTML += `<div class="segment-speaker">Speaker: ${segment.speaker}</div>`;
+                    }
+
+                    contentHTML += `<div class="segment-text">${segment.text}</div>`;
+
+                    if (confidence !== null) {
+                        const confidencePercent = (confidence * 100).toFixed(1);
+                        contentHTML += `<div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${confidencePercent}%"></div>
+                        </div>`;
+                        contentHTML += `<div style="font-size: 0.85em; color: #666; margin-top: 5px;">Confidence: ${confidencePercent}%</div>`;
+                    }
+
+                    contentHTML += `</div>`;
+                });
+            }
+
+            resultContent.innerHTML = contentHTML;
+            resultSection.classList.add('active');
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 1000);
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+        }
+    </script>
+</body>
+</html>

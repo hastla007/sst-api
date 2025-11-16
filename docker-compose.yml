@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  # PostgreSQL database for persistent storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: stt-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=stt_db
+      - POSTGRES_USER=stt_user
+      - POSTGRES_PASSWORD=stt_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stt_user -d stt_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # Redis service for caching and task queue
   redis:
     image: redis:7-alpine
@@ -17,7 +36,7 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # Main STT API service
+  # Main STT API service (v3.0 with all enterprise features)
   stt-service:
     build: .
     container_name: stt-service
@@ -35,6 +54,9 @@ services:
       - RATE_LIMIT_REQUESTS=10
       - RATE_LIMIT_WINDOW=60  # seconds
 
+      # Database configuration (PostgreSQL)
+      - DATABASE_URL=postgresql://stt_user:stt_password@postgres:5432/stt_db
+
       # Redis configuration
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -47,10 +69,30 @@ services:
 
       # GPU support (set to "true" if using GPU)
       - USE_GPU=false
+
+      # Cloud Storage Configuration (optional)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_BUCKET=${AWS_BUCKET:-stt-audio-files}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+
+      - GCS_BUCKET=${GCS_BUCKET:-stt-audio-files}
+      - GCS_CREDENTIALS_FILE=${GCS_CREDENTIALS_FILE:-}
+
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
+      - AZURE_CONTAINER=${AZURE_CONTAINER:-stt-audio-files}
+
+      # Speaker Diarization (requires HuggingFace token)
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - DIARIZATION_MODEL=pyannote/speaker-diarization
+
     volumes:
       - ./temp:/tmp
-      - ./models:/root/.cache/whisper  # Cache models to avoid re-downloading
+      - ./models:/root/.cache/whisper  # Cache Whisper models
+      - ./transformers_cache:/root/.cache/huggingface  # Cache transformers models
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -62,11 +104,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 8G  # Increased for ML models
         reservations:
-          memory: 2G
+          memory: 4G
 
-  # Celery worker for async task processing
+  # Celery worker for async task processing with all features
   celery-worker:
     build: .
     container_name: stt-celery-worker
@@ -74,6 +116,9 @@ services:
     environment:
       # Whisper model configuration (same as main service)
       - WHISPER_MODEL=base
+
+      # Database configuration
+      - DATABASE_URL=postgresql://stt_user:stt_password@postgres:5432/stt_db
 
       # Redis configuration
       - REDIS_HOST=redis
@@ -85,19 +130,33 @@ services:
 
       # GPU support
       - USE_GPU=false
+
+      # Cloud Storage Configuration
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_BUCKET=${AWS_BUCKET:-stt-audio-files}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+
+      # Speaker Diarization
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - DIARIZATION_MODEL=pyannote/speaker-diarization
+
     volumes:
       - ./temp:/tmp
       - ./models:/root/.cache/whisper
+      - ./transformers_cache:/root/.cache/huggingface
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 8G
         reservations:
-          memory: 2G
+          memory: 4G
 
   # Optional: Prometheus for metrics collection
   prometheus:
@@ -133,6 +192,7 @@ services:
       - monitoring
 
 volumes:
+  postgres-data:
   redis-data:
   prometheus-data:
   grafana-data:
