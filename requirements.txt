@@ -1,4 +1,19 @@
+# Core dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 openai-whisper==20250625
 python-multipart==0.0.6
+
+# Async processing and task queue
+celery==5.3.4
+redis==5.0.1
+
+# HTTP client for webhooks
+aiohttp==3.9.1
+requests==2.31.0
+
+# Monitoring and metrics
+prometheus-client==0.19.0
+
+# Additional utilities
+python-dotenv==1.0.0

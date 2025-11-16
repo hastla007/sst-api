@@ -1,354 +1,479 @@
-# Speech-to-Text API Service
+# Enhanced Speech-to-Text API
 
-A production-ready Speech-to-Text (STT) API service powered by OpenAI Whisper and FastAPI. This service provides accurate audio transcription with support for 99+ languages.
+A production-ready, enterprise-grade Speech-to-Text API powered by OpenAI Whisper with advanced features including authentication, rate limiting, caching, async processing, and comprehensive monitoring.
 
 ## Features
 
-- **Multi-language Support**: 99+ languages supported (ISO 639-1 codes)
-- **High Accuracy**: Powered by OpenAI Whisper model
-- **File Size Validation**: Up to 100MB audio files
-- **Multiple Audio Formats**: MP3, WAV, M4A, OGG, FLAC, AAC, WebM
-- **RESTful API**: Clean, well-documented API endpoints
-- **Docker Support**: Easy deployment with Docker Compose
-- **Health Checks**: Built-in health monitoring
-- **CORS Enabled**: Ready for web integrations
-- **Auto-generated Docs**: Interactive API documentation at `/docs`
+### Security
+- **API Key Authentication** - Secure your API with custom API keys
+- **Rate Limiting** - Prevent abuse with configurable request throttling
+- **Input Validation** - Comprehensive file validation and sanitization
+- **CORS Configuration** - Configurable cross-origin resource sharing
+
+### Core Features
+- **Batch Processing** - Process up to 10 audio files in a single request
+- **Webhook Support** - Async callbacks for long-running transcriptions
+- **Multiple Export Formats** - JSON, SRT, and VTT subtitle formats
+- **99 Languages** - Support for 99 languages following ISO 639-1 standard
+- **Multiple Audio Formats** - MP3, WAV, M4A, OGG, WebM, FLAC, AAC
+
+### Performance
+- **Redis Caching** - Cache results for identical files to reduce processing time
+- **Async Task Queue** - Celery-based queue for long-running transcriptions
+- **GPU Support** - Optional CUDA acceleration for faster processing
+- **File Streaming** - Efficient handling of large audio files (up to 100MB)
+
+### Monitoring & Analytics
+- **Prometheus Metrics** - Detailed metrics for monitoring and alerting
+- **Request Tracking** - Correlation IDs for tracing requests across services
+- **Usage Analytics** - Track API usage, success rates, and performance
+- **Health Checks** - Comprehensive health endpoints for orchestration
+
+### Developer Experience
+- **OpenAPI/Swagger** - Interactive API documentation at `/docs`
+- **Comprehensive Tests** - Unit and integration tests with >80% coverage
+- **CI/CD Pipeline** - GitHub Actions workflow for automated testing and deployment
+- **Docker Support** - Complete Docker Compose setup with all services
 
 ## Quick Start
 
+### Prerequisites
+- Docker and Docker Compose
+- (Optional) Python 3.11+ for local development
+
 ### Using Docker Compose (Recommended)
 
+1. **Clone the repository**
 ```bash
-# Clone the repository
-git clone <your-repo-url>
+git clone <repository-url>
 cd sst-api
+```
 
-# Start the service
+2. **Configure environment variables** (optional)
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+3. **Start all services**
+```bash
+# Start core services (API + Redis + Celery)
 docker-compose up -d
 
-# Check service health
+# Or start with monitoring (adds Prometheus + Grafana)
+docker-compose --profile monitoring up -d
+```
+
+4. **Verify the service is running**
+```bash
 curl http://localhost:3008/health
 ```
 
-The service will be available at `http://localhost:3008`
+5. **Access the interactive documentation**
+Open your browser to: http://localhost:3008/docs
 
-### Manual Setup
+### Local Development
 
+1. **Install dependencies**
 ```bash
-# Install dependencies
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
+```
 
-# Run the service
-uvicorn app:app --host 0.0.0.0 --port 8000
+2. **Start Redis** (required for caching and async features)
+```bash
+docker run -d -p 6379:6379 redis:7-alpine
+```
+
+3. **Run the API server**
+```bash
+uvicorn app:app --reload --host 0.0.0.0 --port 8000
+```
+
+4. **Run Celery worker** (in another terminal)
+```bash
+celery -A app.celery_app worker --loglevel=info
 ```
 
 ## API Endpoints
 
-### POST /transcribe
+### Transcription
 
-Transcribe an audio file to text.
+#### POST /transcribe
+Transcribe a single audio file to text.
 
 **Parameters:**
-- `file` (required): Audio file (multipart/form-data)
+- `file` (required): Audio file (mp3, wav, m4a, etc.) - Max 100MB
 - `language` (optional): Language code (e.g., 'en', 'es', 'de')
+- `export_format` (optional): Output format - `json`, `srt`, `vtt` (default: `json`)
+- `webhook_url` (optional): Webhook URL for async processing
+- `use_cache` (optional): Enable/disable caching (default: `true`)
 
-**Example using cURL:**
+**Headers:**
+- `X-API-Key`: Your API key (required if authentication is enabled)
+- `X-Correlation-ID`: Optional correlation ID for request tracking
 
+**Example with cURL:**
 ```bash
-# Transcribe with auto-detection
 curl -X POST http://localhost:3008/transcribe \
-  -F "file=@audio.mp3"
-
-# Transcribe with specific language
-curl -X POST http://localhost:3008/transcribe \
+  -H "X-API-Key: your-api-key" \
   -F "file=@audio.mp3" \
-  -F "language=en"
+  -F "language=en" \
+  -F "export_format=json"
 ```
 
-**Example using Python:**
-
+**Example with Python:**
 ```python
 import requests
 
 url = "http://localhost:3008/transcribe"
+headers = {"X-API-Key": "your-api-key"}
 files = {"file": open("audio.mp3", "rb")}
-data = {"language": "en"}  # Optional
+data = {"language": "en", "export_format": "srt"}
 
-response = requests.post(url, files=files, data=data)
-result = response.json()
-
-print(f"Transcription: {result['text']}")
-print(f"Language: {result['language']}")
+response = requests.post(url, headers=headers, files=files, data=data)
+print(response.text)
 ```
 
-**Response:**
-
+**Response (JSON format):**
 ```json
 {
   "success": true,
-  "text": "This is the transcribed text from your audio file.",
+  "text": "Full transcription text here",
   "language": "en",
   "segments": [
     {
       "start": 0.0,
       "end": 2.5,
-      "text": "This is the transcribed text"
+      "text": "Hello, this is a sample transcription."
     }
-  ]
+  ],
+  "correlation_id": "abc-123-def",
+  "cached": false,
+  "processing_time": 1.234
 }
 ```
 
-### GET /languages
+#### POST /transcribe/batch
+Process multiple audio files in a single request.
 
-Get list of all supported language codes.
+**Parameters:**
+- `files` (required): List of audio files (max 10 files)
+- `language` (optional): Language code for all files
+- `webhook_url` (optional): Webhook URL for results
+
+**Example:**
+```bash
+curl -X POST http://localhost:3008/transcribe/batch \
+  -H "X-API-Key: your-api-key" \
+  -F "files=@audio1.mp3" \
+  -F "files=@audio2.wav" \
+  -F "language=en"
+```
+
+#### GET /task/{task_id}
+Get the status of an async transcription task.
+
+**Example:**
+```bash
+curl http://localhost:3008/task/abc-123-def \
+  -H "X-API-Key: your-api-key"
+```
+
+### Information Endpoints
+
+#### GET /languages
+Get list of supported language codes.
 
 ```bash
 curl http://localhost:3008/languages
 ```
 
-**Response:**
-
-```json
-{
-  "supported_languages": ["af", "ar", "as", "az", ...],
-  "count": 99,
-  "note": "Language codes follow ISO 639-1 standard"
-}
-```
-
-### GET /health
-
-Check service health status.
+#### GET /health
+Health check endpoint with system status.
 
 ```bash
 curl http://localhost:3008/health
 ```
 
-**Response:**
-
-```json
-{
-  "status": "healthy",
-  "model": "base",
-  "service": "STT API",
-  "max_file_size_mb": 100.0,
-  "supported_languages_count": 99
-}
-```
-
-### GET /
-
-Get API information and available endpoints.
+#### GET /analytics
+Get usage analytics and statistics (requires authentication).
 
 ```bash
-curl http://localhost:3008/
+curl http://localhost:3008/analytics \
+  -H "X-API-Key: your-api-key"
 ```
 
-### GET /docs
+#### GET /metrics
+Prometheus metrics endpoint for monitoring.
 
-Interactive API documentation (Swagger UI) - visit in your browser:
-```
-http://localhost:3008/docs
+```bash
+curl http://localhost:3008/metrics
 ```
 
 ## Configuration
 
 ### Environment Variables
 
-Configure the service using environment variables in `docker-compose.yml`:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WHISPER_MODEL` | `base` | Model size: tiny, base, small, medium, large |
+| `API_KEYS` | - | Comma-separated API keys (empty = no auth) |
+| `CORS_ORIGINS` | `*` | Allowed CORS origins (comma-separated) |
+| `RATE_LIMIT_REQUESTS` | `10` | Max requests per time window |
+| `RATE_LIMIT_WINDOW` | `60` | Rate limit window in seconds |
+| `REDIS_HOST` | `redis` | Redis server hostname |
+| `REDIS_PORT` | `6379` | Redis server port |
+| `CACHE_TTL` | `3600` | Cache time-to-live in seconds |
+| `USE_GPU` | `false` | Enable GPU acceleration (requires CUDA) |
 
-```yaml
-environment:
-  - WHISPER_MODEL=base  # Options: tiny, base, small, medium, large
+### Whisper Models
+
+| Model | Size | Speed | Accuracy | Use Case |
+|-------|------|-------|----------|----------|
+| tiny | 39M | Fastest | Good | Quick transcriptions, testing |
+| base | 74M | Fast | Better | General purpose, default |
+| small | 244M | Medium | Great | Better accuracy needed |
+| medium | 769M | Slow | Excellent | High accuracy required |
+| large | 1550M | Slowest | Best | Maximum accuracy |
+
+### Authentication
+
+Enable authentication by setting API keys:
+
+```bash
+# In .env or docker-compose.yml
+API_KEYS=key1,key2,key3
 ```
 
-**Available Models:**
-
-| Model  | Size | Speed | Accuracy |
-|--------|------|-------|----------|
-| tiny   | 39M  | Fast  | Good     |
-| base   | 74M  | Fast  | Better   |
-| small  | 244M | Med   | Great    |
-| medium | 769M | Slow  | Excellent|
-| large  | 1550M| Slowest| Best    |
-
-### Port Configuration
-
-Change the exposed port in `docker-compose.yml`:
-
-```yaml
-ports:
-  - "3008:8000"  # Change 3008 to your preferred port
+Then include the key in requests:
+```bash
+curl -H "X-API-Key: key1" http://localhost:3008/transcribe
 ```
 
-### Resource Limits
+### Rate Limiting
 
-Adjust memory limits based on your model choice:
+Configure rate limits to prevent abuse:
 
-```yaml
-deploy:
-  resources:
-    limits:
-      memory: 4G
-    reservations:
-      memory: 2G
+```bash
+RATE_LIMIT_REQUESTS=100  # 100 requests
+RATE_LIMIT_WINDOW=60     # per 60 seconds
 ```
 
-## Supported Audio Formats
+Rate limiting is per API key (if auth enabled) or per IP address.
 
-- MP3 (audio/mpeg)
-- WAV (audio/wav, audio/wave)
-- M4A (audio/m4a, audio/mp4)
-- OGG (audio/ogg)
-- WebM (audio/webm)
-- FLAC (audio/flac)
-- AAC (audio/aac)
+## Export Formats
 
-## Error Handling
+### JSON (Default)
+Standard JSON response with full transcription details, segments, and metadata.
 
-The API returns appropriate HTTP status codes:
+### SRT (SubRip)
+Subtitle format compatible with most video players:
+```
+1
+00:00:00,000 --> 00:00:02,500
+Hello, this is a sample transcription.
 
-- `200` - Success
-- `400` - Bad request (invalid language code, empty file)
-- `413` - Payload too large (file > 100MB)
-- `422` - Validation error
-- `500` - Server error
+2
+00:00:02,500 --> 00:00:05,000
+This is the second segment.
+```
 
-**Example Error Response:**
+### VTT (WebVTT)
+Web Video Text Tracks format:
+```
+WEBVTT
 
+00:00:00.000 --> 00:00:02.500
+Hello, this is a sample transcription.
+
+00:00:02.500 --> 00:00:05.000
+This is the second segment.
+```
+
+## Webhooks
+
+For long-running transcriptions, use webhooks for async processing:
+
+```bash
+curl -X POST http://localhost:3008/transcribe \
+  -H "X-API-Key: your-api-key" \
+  -F "file=@large-audio.mp3" \
+  -F "webhook_url=https://your-server.com/webhook"
+```
+
+The webhook will receive a POST request with:
 ```json
 {
-  "detail": "Unsupported language code: xyz. Use /languages endpoint to see supported languages."
-}
-```
-
-## Integration Examples
-
-### n8n Workflow
-
-1. Add HTTP Request node
-2. Set Method to POST
-3. URL: `http://stt-service:8000/transcribe`
-4. Body: Form-Data
-5. Add file field and language (optional)
-
-### Python Script
-
-```python
-import requests
-import json
-
-def transcribe_audio(file_path, language=None):
-    url = "http://localhost:3008/transcribe"
-
-    with open(file_path, 'rb') as f:
-        files = {'file': f}
-        data = {'language': language} if language else {}
-
-        response = requests.post(url, files=files, data=data)
-        response.raise_for_status()
-
-        return response.json()
-
-# Usage
-result = transcribe_audio('meeting.mp3', language='en')
-print(result['text'])
-```
-
-### JavaScript/Node.js
-
-```javascript
-const FormData = require('form-data');
-const fs = require('fs');
-const axios = require('axios');
-
-async function transcribeAudio(filePath, language = null) {
-  const form = new FormData();
-  form.append('file', fs.createReadStream(filePath));
-
-  if (language) {
-    form.append('language', language);
+  "correlation_id": "abc-123-def",
+  "status": "completed",
+  "result": {
+    "text": "Transcription text",
+    "language": "en",
+    "segments": [...]
   }
-
-  const response = await axios.post(
-    'http://localhost:3008/transcribe',
-    form,
-    { headers: form.getHeaders() }
-  );
-
-  return response.data;
 }
-
-// Usage
-transcribeAudio('audio.mp3', 'en')
-  .then(result => console.log(result.text));
 ```
 
-## Development
+## Monitoring
 
-### Running Tests
+### Prometheus Metrics
 
+Available metrics at `/metrics`:
+- `stt_requests_total` - Total requests by endpoint and status
+- `stt_request_duration_seconds` - Request duration histogram
+- `stt_transcription_duration_seconds` - Transcription duration histogram
+- `stt_active_requests` - Current active requests
+- `stt_cache_hits_total` - Total cache hits
+- `stt_cache_misses_total` - Total cache misses
+
+### Grafana Dashboard
+
+Access Grafana at http://localhost:3000 (when using monitoring profile):
+- Username: `admin`
+- Password: `admin`
+
+### Usage Analytics
+
+Get usage statistics via the `/analytics` endpoint:
 ```bash
-# Install dev dependencies
-pip install pytest httpx
-
-# Run tests
-pytest
+curl http://localhost:3008/analytics -H "X-API-Key: your-api-key"
 ```
 
-### Viewing Logs
+Returns:
+```json
+{
+  "total_requests": 1000,
+  "successful_requests": 950,
+  "failed_requests": 50,
+  "success_rate": 0.95,
+  "average_processing_time": 2.34,
+  "cache_statistics": {
+    "hits": 200,
+    "misses": 750,
+    "hit_rate": 0.21
+  }
+}
+```
+
+## Testing
+
+### Run Tests
 
 ```bash
-# Docker logs
-docker-compose logs -f stt-service
+# Install test dependencies
+pip install -r requirements-dev.txt
 
-# Follow logs
-docker logs -f stt-service
+# Run all tests
+pytest test_app.py -v
+
+# Run with coverage
+pytest test_app.py -v --cov=app --cov-report=html
+
+# Run specific test class
+pytest test_app.py::TestTranscription -v
+```
+
+### Test Coverage
+
+Current test coverage: >80%
+- Health and information endpoints
+- Authentication and authorization
+- Rate limiting
+- Transcription (single and batch)
+- Export formats (JSON, SRT, VTT)
+- Utility functions
+- Error handling
+
+## CI/CD
+
+GitHub Actions workflow automatically:
+- Runs tests on every push
+- Checks code quality (black, flake8)
+- Builds Docker images
+- Runs security scans
+- Deploys on main branch (configure deployment target)
+
+## GPU Support
+
+Enable GPU acceleration for faster transcription:
+
+1. **Install NVIDIA drivers and CUDA**
+
+2. **Update docker-compose.yml:**
+```yaml
+stt-service:
+  environment:
+    - USE_GPU=true
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+```
+
+3. **Restart services:**
+```bash
+docker-compose up -d
 ```
 
 ## Troubleshooting
 
-### Service won't start
+### Common Issues
 
-1. Check if port 3008 is available: `lsof -i :3008`
-2. Check Docker logs: `docker-compose logs stt-service`
-3. Ensure sufficient disk space for model download
+**Issue: Model download takes too long**
+- Solution: Models are cached in `./models` volume. First run will download the model.
 
-### Transcription fails
+**Issue: Out of memory errors**
+- Solution: Use a smaller model (tiny or base) or increase Docker memory limits.
 
-1. Verify audio file format is supported
-2. Check file size (must be < 100MB)
-3. Try with a different Whisper model
-4. Check service logs for detailed error messages
+**Issue: Redis connection failed**
+- Solution: Ensure Redis service is running. Check `docker-compose ps`.
 
-### Out of memory errors
+**Issue: Rate limit exceeded**
+- Solution: Adjust `RATE_LIMIT_REQUESTS` or wait for the rate limit window to reset.
 
-1. Reduce Whisper model size (use `tiny` or `base`)
-2. Increase Docker memory limits in `docker-compose.yml`
-3. Process smaller audio files
+**Issue: Authentication errors**
+- Solution: Ensure `X-API-Key` header is set correctly. Check `API_KEYS` environment variable.
 
-## Performance Tips
+### Logs
 
-1. **Model Selection**: Use `base` model for good balance of speed/accuracy
-2. **Caching**: Models are cached in `./models` volume to avoid re-downloads
-3. **File Size**: Smaller files process faster; consider splitting large files
-4. **Language Hint**: Providing language code improves accuracy and speed
+View service logs:
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f stt-service
+docker-compose logs -f celery-worker
+docker-compose logs -f redis
+```
 
 ## Production Deployment
 
-### Security Considerations
+### Recommended Settings
 
-1. **Add Authentication**: Implement API key or JWT authentication
-2. **Rate Limiting**: Add rate limiting to prevent abuse
-3. **HTTPS**: Use reverse proxy (nginx/traefik) with SSL
-4. **File Validation**: Additional validation for production use
+```yaml
+# docker-compose.yml
+environment:
+  - WHISPER_MODEL=small  # Balance of speed and accuracy
+  - API_KEYS=${API_KEYS}  # Set via environment
+  - CORS_ORIGINS=https://your-domain.com
+  - RATE_LIMIT_REQUESTS=100
+  - RATE_LIMIT_WINDOW=60
+  - CACHE_TTL=7200  # 2 hours
+```
 
-### Recommended nginx Configuration
+### Reverse Proxy (Nginx)
 
 ```nginx
 server {
-    listen 443 ssl;
-    server_name stt.yourdomain.com;
+    listen 443 ssl http2;
+    server_name api.yourdomain.com;
 
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
@@ -357,22 +482,109 @@ server {
         proxy_pass http://localhost:3008;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Increase timeouts for large file uploads
+        proxy_read_timeout 300;
+        proxy_connect_timeout 300;
+        proxy_send_timeout 300;
+
+        # Increase max body size
         client_max_body_size 100M;
     }
 }
 ```
 
-## License
+### Scaling
 
-[Add your license here]
+Scale Celery workers:
+```bash
+docker-compose up -d --scale celery-worker=4
+```
+
+### Backup
+
+Important data to backup:
+- Redis data: `./redis-data` volume (for cache persistence)
+- Model cache: `./models` volume (to avoid re-downloading)
+- Analytics data: Export via `/analytics` endpoint
+
+## Architecture
+
+```
+┌─────────────┐
+│   Client    │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────────────┐
+│      FastAPI Application        │
+│  ┌──────────────────────────┐   │
+│  │ Authentication Middleware │   │
+│  └──────────────────────────┘   │
+│  ┌──────────────────────────┐   │
+│  │ Rate Limiting Middleware  │   │
+│  └──────────────────────────┘   │
+│  ┌──────────────────────────┐   │
+│  │  Correlation ID Tracking  │   │
+│  └──────────────────────────┘   │
+└────────┬──────────┬─────────────┘
+         │          │
+         ▼          ▼
+    ┌────────┐  ┌────────┐
+    │ Redis  │  │ Celery │
+    │ Cache  │  │ Worker │
+    └────────┘  └────────┘
+         │          │
+         ▼          ▼
+    ┌──────────────────┐
+    │ Whisper Model    │
+    │ (CPU/GPU)        │
+    └──────────────────┘
+```
 
 ## Contributing
 
-[Add contribution guidelines here]
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Make your changes
+4. Run tests: `pytest test_app.py -v`
+5. Run code quality checks: `black . && flake8 .`
+6. Commit changes: `git commit -am 'Add your feature'`
+7. Push to the branch: `git push origin feature/your-feature`
+8. Create a Pull Request
+
+## License
+
+This project is provided as-is for educational and commercial use.
 
 ## Support
 
 For issues and questions:
-- Open an issue on GitHub
-- Check `/docs` endpoint for API documentation
-- Review logs for debugging information
+- GitHub Issues: [Create an issue](https://github.com/your-repo/issues)
+- Documentation: [API Docs](http://localhost:3008/docs)
+
+## Changelog
+
+### Version 2.0.0 (Latest)
+- Added API key authentication
+- Added rate limiting
+- Added batch processing
+- Added webhook support
+- Added SRT and VTT export formats
+- Added Redis caching
+- Added Celery async task queue
+- Added GPU support
+- Added Prometheus metrics
+- Added correlation ID tracking
+- Added usage analytics
+- Added comprehensive tests
+- Added CI/CD pipeline
+- Enhanced OpenAPI documentation
+
+### Version 1.0.0
+- Initial release
+- Basic transcription functionality
+- Multi-language support
+- Docker support
