@@ -21,6 +21,8 @@ import asyncio
 import aiohttp
 from urllib.parse import urlparse
 import numpy as np
+import socket
+import ipaddress
 
 # Database imports
 from database import get_db_session, init_db_async, check_db_connection, async_engine
@@ -1466,31 +1468,38 @@ async def websocket_transcribe(
                             continue
 
                         full_audio = b"".join(audio_chunks)
+                        temp_file_path = None
 
-                        # Save to temp file
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
-                            temp_file.write(full_audio)
-                            temp_file_path = temp_file.name
+                        try:
+                            # Save to temp file
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                                temp_file.write(full_audio)
+                                temp_file_path = temp_file.name
 
-                        # Transcribe
-                        result = transcribe_file(
-                            temp_file_path,
-                            command.get("language"),
-                            command.get("initial_prompt"),
-                            command.get("return_confidence", True)
-                        )
+                            # Transcribe
+                            result = transcribe_file(
+                                temp_file_path,
+                                command.get("language"),
+                                command.get("initial_prompt"),
+                                command.get("return_confidence", True)
+                            )
 
-                        # Clean up
-                        os.unlink(temp_file_path)
+                            # Send result
+                            await websocket.send_json({
+                                "status": "completed",
+                                "result": result
+                            })
 
-                        # Send result
-                        await websocket.send_json({
-                            "status": "completed",
-                            "result": result
-                        })
+                            # Clear chunks for next session
+                            audio_chunks = []
 
-                        # Clear chunks for next session
-                        audio_chunks = []
+                        finally:
+                            # Clean up temp file
+                            if temp_file_path and os.path.exists(temp_file_path):
+                                try:
+                                    os.unlink(temp_file_path)
+                                except Exception as cleanup_error:
+                                    logger.error(f"Error cleaning up WebSocket temp file: {cleanup_error}")
 
                     elif command.get("action") == "reset":
                         audio_chunks = []
@@ -1613,28 +1622,37 @@ async def transcribe_batch(
                 # Immediate processing
                 filename = file.filename or "audio.wav"
                 suffix = os.path.splitext(filename)[1] or ".wav"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                    temp_file.write(content)
-                    temp_file_path = temp_file.name
+                temp_file_path = None
 
-                result = transcribe_file(temp_file_path, language)
-                os.unlink(temp_file_path)
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+                        temp_file.write(content)
+                        temp_file_path = temp_file.name
 
-                # Update transcription record
-                transcription.status = TranscriptionStatus.COMPLETED
-                transcription.completed_at = datetime.utcnow()
-                transcription.text = result["text"]
-                transcription.detected_language = result["language"]
-                transcription.segments = result["segments"]
-                transcription.processing_time = result["duration"]
-                await db.commit()
+                    result = transcribe_file(temp_file_path, language)
 
-                results.append({
-                    "filename": file.filename,
-                    "transcription_id": transcription_id,
-                    "status": "completed",
-                    "result": result
-                })
+                    # Update transcription record
+                    transcription.status = TranscriptionStatus.COMPLETED
+                    transcription.completed_at = datetime.utcnow()
+                    transcription.text = result["text"]
+                    transcription.detected_language = result["language"]
+                    transcription.segments = result["segments"]
+                    transcription.processing_time = result["duration"]
+                    await db.commit()
+
+                    results.append({
+                        "filename": file.filename,
+                        "transcription_id": transcription_id,
+                        "status": "completed",
+                        "result": result
+                    })
+                finally:
+                    # Clean up temp file
+                    if temp_file_path and os.path.exists(temp_file_path):
+                        try:
+                            os.unlink(temp_file_path)
+                        except Exception as cleanup_error:
+                            logger.error(f"Error cleaning up batch processing temp file: {cleanup_error}")
 
         except Exception as e:
             results.append({
@@ -1871,12 +1889,6 @@ async def get_task_status(task_id: str, api_key: Optional[APIKey] = Depends(veri
         raise HTTPException(
             status_code=400,
             detail="Invalid task_id provided"
-        )
-
-    if not celery_app:
-        raise HTTPException(
-            status_code=503,
-            detail="Async processing not available. Celery is not configured."
         )
 
     try:
