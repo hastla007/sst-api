@@ -16,6 +16,8 @@ from functools import wraps
 import asyncio
 import aiohttp
 from urllib.parse import urlparse
+import ipaddress
+import socket
 
 # Third-party imports
 try:
@@ -263,6 +265,18 @@ async def rate_limiter(request: Request, api_key: str = Depends(verify_api_key))
         requests.append(current_time)
         request_count = len(requests)
 
+        # Clean up empty deques periodically to prevent memory leak
+        # Remove identifiers that have no recent requests (outside rate limit window)
+        if len(rate_limit_storage) > 1000:  # Only clean up if we have many keys
+            keys_to_remove = []
+            for key, deque_obj in rate_limit_storage.items():
+                if not deque_obj or (deque_obj and deque_obj[-1] < current_time - RATE_LIMIT_WINDOW * 2):
+                    keys_to_remove.append(key)
+            for key in keys_to_remove:
+                del rate_limit_storage[key]
+            if keys_to_remove:
+                logger.debug(f"Cleaned up {len(keys_to_remove)} old rate limit entries")
+
     if request_count > RATE_LIMIT_REQUESTS:
         raise HTTPException(
             status_code=429,
@@ -279,11 +293,57 @@ def calculate_file_hash(content: bytes) -> str:
 
 
 def validate_webhook_url(url: str) -> bool:
-    """Validate webhook URL format"""
+    """Validate webhook URL format and prevent SSRF attacks"""
     try:
         result = urlparse(url)
-        return all([result.scheme in ['http', 'https'], result.netloc])
-    except Exception:
+
+        # Check scheme
+        if result.scheme not in ['http', 'https']:
+            return False
+
+        # Check netloc exists
+        if not result.netloc:
+            return False
+
+        # Extract hostname (remove port if present)
+        hostname = result.hostname
+        if not hostname:
+            return False
+
+        # Block localhost and loopback
+        if hostname.lower() in ['localhost', '127.0.0.1', '::1', '0.0.0.0']:
+            logger.warning(f"Blocked webhook URL to localhost: {url}")
+            return False
+
+        # Try to resolve hostname and check if it's a private IP
+        try:
+            # Get IP address
+            addr_info = socket.getaddrinfo(hostname, None)
+            for family, _, _, _, sockaddr in addr_info:
+                ip_str = sockaddr[0]
+
+                # Parse IP address
+                ip = ipaddress.ip_address(ip_str)
+
+                # Block private, loopback, link-local, and reserved IPs
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                    logger.warning(f"Blocked webhook URL to private/internal IP {ip}: {url}")
+                    return False
+
+                # Block multicast
+                if ip.is_multicast:
+                    logger.warning(f"Blocked webhook URL to multicast IP {ip}: {url}")
+                    return False
+
+        except (socket.gaierror, ValueError, OSError):
+            # DNS resolution failed or invalid IP - allow it
+            # This could be a transient DNS issue or a typo by user
+            # Let the actual webhook request fail naturally
+            pass
+
+        return True
+    except Exception as e:
+        logger.error(f"Error validating webhook URL: {e}")
         return False
 
 
@@ -515,11 +575,26 @@ async def transcribe_audio(
                 detail="Invalid webhook URL. Must be a valid HTTP or HTTPS URL."
             )
 
-        # Read file content
-        content = await file.read()
+        # Check file size early if Content-Length header is available
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                size = int(content_length)
+                if size > MAX_FILE_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f}MB"
+                    )
+                if size == 0:
+                    raise HTTPException(status_code=400, detail="Empty file uploaded")
+            except ValueError:
+                pass  # Invalid Content-Length, will check actual size later
+
+        # Read file content with size limit
+        content = await file.read(MAX_FILE_SIZE + 1)  # Read one byte extra to detect oversized files
         file_size = len(content)
 
-        # Validate file size
+        # Validate actual file size
         if file_size > MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=413,
@@ -529,15 +604,48 @@ async def transcribe_audio(
         if file_size == 0:
             raise HTTPException(status_code=400, detail="Empty file uploaded")
 
-        # Validate file content (basic magic number check)
-        if content[:4] not in [b'ID3\x03', b'ID3\x04', b'RIFF', b'fLaC', b'OggS'] and content[:2] not in [b'\xff\xfb', b'\xff\xf3', b'\xff\xf2']:
-            logger.warning(f"Suspicious file content, may not be a valid audio file")
+        # Validate content-type header
+        content_type = file.content_type or ""
+        if content_type and content_type.lower() not in SUPPORTED_AUDIO_TYPES:
+            logger.warning(f"Unsupported content-type: {content_type}")
+            # Still allow processing if magic number check passes
+
+        # Validate file content with improved magic number check
+        is_valid_audio = False
+        if len(content) >= 12:
+            # Check various audio format signatures
+            header = content[:12]
+
+            # MP3 (ID3v2 or MPEG sync)
+            if header[:3] in [b'ID3', b'\xff\xfb', b'\xff\xf3', b'\xff\xf2']:
+                is_valid_audio = True
+            # WAV/RIFF (also AVI, WebM use RIFF)
+            elif header[:4] == b'RIFF' and header[8:12] == b'WAVE':
+                is_valid_audio = True
+            # FLAC
+            elif header[:4] == b'fLaC':
+                is_valid_audio = True
+            # OGG
+            elif header[:4] == b'OggS':
+                is_valid_audio = True
+            # M4A/MP4/AAC (ftyp box)
+            elif header[4:8] == b'ftyp':
+                is_valid_audio = True
+            # WebM (EBML header)
+            elif header[:4] == b'\x1a\x45\xdf\xa3':
+                is_valid_audio = True
+
+        if not is_valid_audio:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid audio file format. Supported formats: MP3, WAV, M4A, OGG, FLAC, AAC, WebM"
+            )
 
         logger.info(f"File size: {file_size / (1024*1024):.2f}MB")
 
-        # Calculate file hash for caching
+        # Calculate file hash for caching (include export_format in cache key)
         file_hash = calculate_file_hash(content)
-        cache_key = f"{file_hash}:{language or 'auto'}"
+        cache_key = f"{file_hash}:{language or 'auto'}:{export_format}"
 
         # Check cache
         cached_result = None
@@ -756,18 +864,26 @@ async def transcribe_batch(
                 # Immediate processing
                 filename = file.filename or "audio.wav"
                 suffix = os.path.splitext(filename)[1] or ".wav"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
-                    temp_file.write(content)
-                    temp_file_path = temp_file.name
+                temp_file_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+                        temp_file.write(content)
+                        temp_file_path = temp_file.name
 
-                result = transcribe_file(temp_file_path, language)
-                os.unlink(temp_file_path)
+                    result = transcribe_file(temp_file_path, language)
 
-                results.append({
-                    "filename": file.filename,
-                    "status": "completed",
-                    "result": result
-                })
+                    results.append({
+                        "filename": file.filename,
+                        "status": "completed",
+                        "result": result
+                    })
+                finally:
+                    # Ensure temp file is always cleaned up
+                    if temp_file_path and os.path.exists(temp_file_path):
+                        try:
+                            os.unlink(temp_file_path)
+                        except Exception as cleanup_error:
+                            logger.error(f"Error cleaning up temp file {temp_file_path}: {cleanup_error}")
 
         except Exception as e:
             results.append({
@@ -795,16 +911,17 @@ async def get_task_status(task_id: str, api_key: str = Depends(verify_api_key)):
     **Returns:**
     - Task status and result if completed
     """
-    if not celery_app:
-        raise HTTPException(
-            status_code=503,
-            detail="Async processing not available. Celery is not configured."
-        )
-
+    # Validate input first before checking system state
     if not task_id or not task_id.strip():
         raise HTTPException(
             status_code=400,
             detail="Invalid task_id provided"
+        )
+
+    if not celery_app:
+        raise HTTPException(
+            status_code=503,
+            detail="Async processing not available. Celery is not configured."
         )
 
     try:
