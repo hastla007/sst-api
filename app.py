@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Header, Depends, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, PlainTextResponse, FileResponse, StreamingResponse, HTMLResponse
+from starlette.background import BackgroundTask
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from typing import Optional, List, Dict, Any, Union
@@ -23,6 +24,8 @@ from urllib.parse import urlparse
 import numpy as np
 import socket
 import ipaddress
+import threading
+from functools import lru_cache
 
 # Database imports
 from database import get_db_session, init_db_async, check_db_connection, async_engine
@@ -318,8 +321,15 @@ if TRANSFORMERS_AVAILABLE:
     except Exception as e:
         logger.warning(f"Failed to load sentiment analyzer: {e}")
 
-# Translation models cache
+# Translation models cache with LRU limit (max 10 language pairs)
 translation_models = {}
+MAX_TRANSLATION_MODELS = 10
+
+# Thread-safety locks for shared model resources
+model_lock = threading.Lock()
+diarization_lock = threading.Lock()
+sentiment_lock = threading.Lock()
+rate_limiter_lock = threading.Lock()
 
 
 @app.on_event("startup")
@@ -423,27 +433,28 @@ async def rate_limiter(
             logger.error(f"Redis rate limiting error: {e}")
             request_count = 0
     else:
-        # Fallback to in-memory rate limiting
-        requests = rate_limit_storage[identifier]
-        # Remove old requests
-        while requests and requests[0] < current_time - RATE_LIMIT_WINDOW:
-            requests.popleft()
-        requests.append(current_time)
-        request_count = len(requests)
+        # Fallback to in-memory rate limiting (with thread-safety)
+        with rate_limiter_lock:
+            requests = rate_limit_storage[identifier]
+            # Remove old requests
+            while requests and requests[0] < current_time - RATE_LIMIT_WINDOW:
+                requests.popleft()
+            requests.append(current_time)
+            request_count = len(requests)
 
-        # Cleanup old keys to prevent memory leak (every 100th request)
-        if usage_stats["total_requests"] % 100 == 0:
-            # Remove keys with no recent activity
-            keys_to_remove = []
-            for key, req_deque in rate_limit_storage.items():
-                if not req_deque or (req_deque and req_deque[-1] < current_time - RATE_LIMIT_WINDOW):
-                    keys_to_remove.append(key)
+            # Cleanup old keys to prevent memory leak (every 100th request)
+            if usage_stats["total_requests"] % 100 == 0:
+                # Remove keys with no recent activity
+                keys_to_remove = []
+                for key, req_deque in rate_limit_storage.items():
+                    if not req_deque or (req_deque and req_deque[-1] < current_time - RATE_LIMIT_WINDOW):
+                        keys_to_remove.append(key)
 
-            for key in keys_to_remove:
-                del rate_limit_storage[key]
+                for key in keys_to_remove:
+                    del rate_limit_storage[key]
 
-            if keys_to_remove:
-                logger.info(f"Rate limiter cleanup: removed {len(keys_to_remove)} old keys")
+                if keys_to_remove:
+                    logger.info(f"Rate limiter cleanup: removed {len(keys_to_remove)} old keys")
 
     if request_count > rate_limit:
         raise HTTPException(
@@ -611,7 +622,10 @@ def segments_to_docx(segments: List[Dict], filename: str = "transcription.docx")
             p.add_run(f"\n{speaker}\n").italic = True
         p.add_run(segment['text'].strip())
 
-    temp_path = f"/tmp/{filename}"
+    # Use tempfile for auto-cleanup
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".docx", prefix="transcript_")
+    temp_path = temp_file.name
+    temp_file.close()
     doc.save(temp_path)
     return temp_path
 
@@ -621,7 +635,11 @@ def segments_to_pdf(segments: List[Dict], filename: str = "transcription.pdf") -
     if not PDF_AVAILABLE:
         raise HTTPException(status_code=503, detail="PDF export not available")
 
-    temp_path = f"/tmp/{filename}"
+    # Use tempfile for auto-cleanup
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", prefix="transcript_")
+    temp_path = temp_file.name
+    temp_file.close()
+
     doc = SimpleDocTemplate(temp_path, pagesize=letter)
     styles = getSampleStyleSheet()
     story = []
@@ -759,8 +777,22 @@ async def send_webhook_with_retry(webhook_url: str, data: Dict, transcription_id
     logger.error(f"Webhook failed after {max_retries} attempts to {webhook_url}")
 
 
+async def send_webhook_background(webhook_url: str, data: Dict, transcription_id: str):
+    """Send webhook in background task with its own DB session"""
+    try:
+        # Create new database session for background task
+        async for db in get_db_session():
+            try:
+                await send_webhook_with_retry(webhook_url, data, transcription_id, db)
+            finally:
+                await db.close()
+            break
+    except Exception as e:
+        logger.error(f"Background webhook task failed: {e}")
+
+
 def perform_diarization(audio_path: str) -> Optional[Dict]:
-    """Perform speaker diarization"""
+    """Perform speaker diarization (thread-safe)"""
     if not diarization_pipeline:
         return None
 
@@ -768,7 +800,9 @@ def perform_diarization(audio_path: str) -> Optional[Dict]:
         if PROMETHEUS_AVAILABLE:
             diarization_counter.inc()
 
-        diarization = diarization_pipeline(audio_path)
+        # Thread-safe model access
+        with diarization_lock:
+            diarization = diarization_pipeline(audio_path)
 
         speakers_data = []
         for turn, _, speaker in diarization.itertracks(yield_label=True):
@@ -820,15 +854,21 @@ def merge_diarization_with_segments(segments: List[Dict], diarization_data: Opti
 
 
 def translate_text(text: str, target_language: str) -> Optional[str]:
-    """Translate text to target language"""
+    """Translate text to target language (with LRU cache limit)"""
     if not TRANSFORMERS_AVAILABLE:
         return None
 
     try:
-        # Load model for language pair (cache it)
+        # Load model for language pair (cache with limit)
         model_name = f"Helsinki-NLP/opus-mt-en-{target_language}"
 
         if model_name not in translation_models:
+            # Evict oldest model if at capacity
+            if len(translation_models) >= MAX_TRANSLATION_MODELS:
+                oldest_model = next(iter(translation_models))
+                del translation_models[oldest_model]
+                logger.info(f"Evicted translation model: {oldest_model}")
+
             tokenizer = MarianTokenizer.from_pretrained(model_name)
             model = MarianMTModel.from_pretrained(model_name)
             translation_models[model_name] = (tokenizer, model)
@@ -851,7 +891,7 @@ def translate_text(text: str, target_language: str) -> Optional[str]:
 
 
 def analyze_sentiment(text: str) -> Optional[Dict]:
-    """Analyze sentiment of text"""
+    """Analyze sentiment of text (thread-safe)"""
     if not sentiment_analyzer:
         return None
 
@@ -861,10 +901,12 @@ def analyze_sentiment(text: str) -> Optional[Dict]:
         chunks = [text[i:i+max_length] for i in range(0, len(text), max_length)]
 
         results = []
-        for chunk in chunks:
-            if chunk.strip():
-                result = sentiment_analyzer(chunk)[0]
-                results.append(result)
+        # Thread-safe model access
+        with sentiment_lock:
+            for chunk in chunks:
+                if chunk.strip():
+                    result = sentiment_analyzer(chunk)[0]
+                    results.append(result)
 
         if not results:
             return None
@@ -891,7 +933,7 @@ def transcribe_file(
     initial_prompt: Optional[str] = None,
     return_confidence: bool = False
 ) -> Dict:
-    """Core transcription function with advanced features"""
+    """Core transcription function with advanced features (thread-safe)"""
     transcribe_options = {
         "verbose": True if return_confidence else False,
     }
@@ -903,7 +945,11 @@ def transcribe_file(
         transcribe_options["initial_prompt"] = initial_prompt
 
     start_time = time.time()
-    result = model.transcribe(file_path, **transcribe_options)
+
+    # Thread-safe model access
+    with model_lock:
+        result = model.transcribe(file_path, **transcribe_options)
+
     duration = time.time() - start_time
 
     if PROMETHEUS_AVAILABLE:
@@ -921,13 +967,15 @@ def transcribe_file(
                     if isinstance(token, dict) and "probability" in token:
                         token_probs.append(token["probability"])
 
-                avg_confidence = sum(token_probs) / len(token_probs) if token_probs else None
-                confidence_scores.append({
-                    "segment_id": segment.get("id"),
-                    "start": segment.get("start"),
-                    "end": segment.get("end"),
-                    "confidence": avg_confidence
-                })
+                # Only add if we have valid confidence scores
+                if token_probs:
+                    avg_confidence = sum(token_probs) / len(token_probs)
+                    confidence_scores.append({
+                        "segment_id": segment.get("id"),
+                        "start": segment.get("start"),
+                        "end": segment.get("end"),
+                        "confidence": avg_confidence
+                    })
 
     return {
         "text": result["text"],
@@ -1020,7 +1068,15 @@ if celery_app:
         except Exception as e:
             logger.error(f"Async transcription error: {e}")
             if temp_file_path and os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
+                try:
+                    os.unlink(temp_file_path)
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to cleanup temp file: {cleanup_error}")
+
+            # Check if we've exhausted retries
+            if self.request.retries >= self.max_retries:
+                logger.error(f"Max retries exceeded for task {self.request.id}, giving up")
+                return {"error": str(e), "status": "failed"}
 
             # Retry with exponential backoff
             raise self.retry(exc=e, countdown=2 ** self.request.retries)
@@ -1087,6 +1143,12 @@ async def transcribe_audio(
         else:
             # Validate file size BEFORE reading content (prevent memory exhaustion)
             filename = file.filename
+
+            # Validate content type if provided
+            if hasattr(file, 'content_type') and file.content_type:
+                if file.content_type not in SUPPORTED_AUDIO_TYPES:
+                    logger.warning(f"Unsupported content type: {file.content_type} for file: {filename}")
+                    # Note: We log but don't reject, as content-type can be incorrect
 
             # Check Content-Length header if available
             if hasattr(file, 'size') and file.size is not None:
@@ -1179,13 +1241,17 @@ async def transcribe_audio(
             elif export_format in ["docx", "pdf"]:
                 if export_format == "docx":
                     file_path = segments_to_docx(cached_result["segments"], f"{filename}.docx")
+                    media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 else:
                     file_path = segments_to_pdf(cached_result["segments"], f"{filename}.pdf")
+                    media_type = "application/pdf"
 
+                # Use background task to clean up temp file after response is sent
                 return FileResponse(
                     path=file_path,
                     filename=os.path.basename(file_path),
-                    media_type="application/octet-stream"
+                    media_type=media_type,
+                    background=BackgroundTask(lambda: os.unlink(file_path) if os.path.exists(file_path) else None)
                 )
 
             return JSONResponse(content=cached_result)
@@ -1255,8 +1321,12 @@ async def transcribe_audio(
         # Transcribe with confidence scores
         result = transcribe_file(temp_file_path, language, initial_prompt, return_confidence)
 
-        # Get audio duration
-        audio_duration = result["segments"][-1]["end"] if result["segments"] else 0
+        # Get audio duration (validate segments exist)
+        if not result["segments"]:
+            logger.warning(f"No segments found in transcription for file: {filename}")
+            audio_duration = 0
+        else:
+            audio_duration = result["segments"][-1]["end"]
 
         # Speaker diarization
         diarization_data = None
@@ -1340,7 +1410,7 @@ async def transcribe_audio(
             request_counter.labels(endpoint='transcribe', status='success').inc()
             request_duration.labels(endpoint='transcribe').observe(request_duration_time)
 
-        # Send webhook in background with retry
+        # Send webhook in background with retry (use transcription_id for webhook lookup)
         if webhook_url:
             webhook_data = {
                 "correlation_id": correlation_id,
@@ -1348,7 +1418,8 @@ async def transcribe_audio(
                 "status": "completed",
                 "result": result
             }
-            background_tasks.add_task(send_webhook_with_retry, webhook_url, webhook_data, transcription_id, db)
+            # Note: Webhook function will create new DB session internally
+            background_tasks.add_task(send_webhook_background, webhook_url, webhook_data, transcription_id)
 
         # Prepare response
         response_data = {
@@ -1396,19 +1467,23 @@ async def transcribe_audio(
             )
         elif export_format == "docx":
             file_path = segments_to_docx(result["segments"], f"{filename}.docx")
+            # Clean up temp file after response is sent
             return FileResponse(
                 path=file_path,
                 filename=os.path.basename(file_path),
                 media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                headers={"X-Correlation-ID": correlation_id}
+                headers={"X-Correlation-ID": correlation_id},
+                background=BackgroundTask(lambda: os.unlink(file_path) if os.path.exists(file_path) else None)
             )
         elif export_format == "pdf":
             file_path = segments_to_pdf(result["segments"], f"{filename}.pdf")
+            # Clean up temp file after response is sent
             return FileResponse(
                 path=file_path,
                 filename=os.path.basename(file_path),
                 media_type="application/pdf",
-                headers={"X-Correlation-ID": correlation_id}
+                headers={"X-Correlation-ID": correlation_id},
+                background=BackgroundTask(lambda: os.unlink(file_path) if os.path.exists(file_path) else None)
             )
 
         return JSONResponse(content=response_data)
@@ -1459,13 +1534,23 @@ async def websocket_transcribe(
     await websocket.accept()
 
     try:
-        # Verify API key if provided
+        # Verify API key if provided (use database validation for consistency)
         if ENABLE_AUTH and api_key:
-            # Simple validation (in production, verify against database)
-            if api_key not in API_KEYS:
-                await websocket.send_json({"error": "Invalid API key"})
-                await websocket.close()
-                return
+            from sqlalchemy import select
+            async for db in get_db_session():
+                try:
+                    result = await db.execute(
+                        select(APIKey).where(APIKey.key == api_key, APIKey.is_active == True)
+                    )
+                    api_key_obj = result.scalar_one_or_none()
+
+                    if not api_key_obj:
+                        await websocket.send_json({"error": "Invalid or inactive API key"})
+                        await websocket.close()
+                        return
+                finally:
+                    await db.close()
+                break
 
         audio_chunks = []
         logger.info("WebSocket connection established for streaming transcription")
@@ -1592,18 +1677,27 @@ async def transcribe_batch(
     for file in files:
         try:
             # Validate file size BEFORE reading content (prevent memory exhaustion)
-            if hasattr(file, 'size') and file.size is not None and file.size > MAX_FILE_SIZE:
-                results.append({
-                    "filename": file.filename,
-                    "status": "error",
-                    "error": f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f}MB"
-                })
-                continue
+            if hasattr(file, 'size') and file.size is not None:
+                if file.size > MAX_FILE_SIZE:
+                    results.append({
+                        "filename": file.filename,
+                        "status": "error",
+                        "error": f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f}MB"
+                    })
+                    continue
+                if file.size == 0:
+                    results.append({
+                        "filename": file.filename,
+                        "status": "error",
+                        "error": "Empty file"
+                    })
+                    continue
 
+            # Read file content with size limit protection
             content = await file.read()
             file_size = len(content)
 
-            # Double-check file size after reading
+            # Double-check file size after reading (in case size wasn't available)
             if file_size > MAX_FILE_SIZE:
                 results.append({
                     "filename": file.filename,
@@ -1815,6 +1909,14 @@ async def create_organization(
         "enterprise": 1000000
     }
 
+    # Validate subscription tier before creating enum
+    valid_tiers = ["free", "starter", "professional", "enterprise"]
+    if subscription_tier not in valid_tiers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid subscription tier. Must be one of: {', '.join(valid_tiers)}"
+        )
+
     org = Organization(
         id=org_id,
         name=name,
@@ -1826,7 +1928,13 @@ async def create_organization(
     )
 
     db.add(org)
-    await db.commit()
+
+    try:
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to create organization: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create organization")
 
     return {
         "id": org_id,
@@ -1916,16 +2024,17 @@ async def get_usage_analytics(
 @app.get("/task/{task_id}")
 async def get_task_status(task_id: str, api_key: Optional[APIKey] = Depends(verify_api_key)):
     """Get status of async transcription task"""
-    if not celery_app:
-        raise HTTPException(
-            status_code=503,
-            detail="Async processing not available. Celery is not configured."
-        )
-
+    # Validate input first before checking system state
     if not task_id or not task_id.strip():
         raise HTTPException(
             status_code=400,
             detail="Invalid task_id provided"
+        )
+
+    if not celery_app:
+        raise HTTPException(
+            status_code=503,
+            detail="Async processing not available. Celery is not configured."
         )
 
     try:
