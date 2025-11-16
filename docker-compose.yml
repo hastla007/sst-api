@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   stt-service:
-    build: ./stt-service
+    build: .
     container_name: stt-service
     ports:
       - "3008:8000"
