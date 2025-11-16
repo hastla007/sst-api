@@ -1,16 +1,58 @@
 version: '3.8'
 
 services:
+  # Redis service for caching and task queue
+  redis:
+    image: redis:7-alpine
+    container_name: stt-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # Main STT API service
   stt-service:
     build: .
     container_name: stt-service
     ports:
       - "3008:8000"
     environment:
+      # Whisper model configuration
       - WHISPER_MODEL=base  # Options: tiny, base, small, medium, large
+
+      # Security settings
+      - API_KEYS=${API_KEYS:-}  # Comma-separated API keys (optional)
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}  # Allowed CORS origins
+
+      # Rate limiting
+      - RATE_LIMIT_REQUESTS=10
+      - RATE_LIMIT_WINDOW=60  # seconds
+
+      # Redis configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - CACHE_TTL=3600  # Cache TTL in seconds
+
+      # Celery configuration
+      - CELERY_BROKER=redis://redis:6379/1
+      - CELERY_BACKEND=redis://redis:6379/2
+
+      # GPU support (set to "true" if using GPU)
+      - USE_GPU=false
     volumes:
       - ./temp:/tmp
       - ./models:/root/.cache/whisper  # Cache models to avoid re-downloading
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -23,3 +65,78 @@ services:
           memory: 4G
         reservations:
           memory: 2G
+
+  # Celery worker for async task processing
+  celery-worker:
+    build: .
+    container_name: stt-celery-worker
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      # Whisper model configuration (same as main service)
+      - WHISPER_MODEL=base
+
+      # Redis configuration
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+      # Celery configuration
+      - CELERY_BROKER=redis://redis:6379/1
+      - CELERY_BACKEND=redis://redis:6379/2
+
+      # GPU support
+      - USE_GPU=false
+    volumes:
+      - ./temp:/tmp
+      - ./models:/root/.cache/whisper
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  # Optional: Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: stt-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # Optional: Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: stt-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+volumes:
+  redis-data:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  default:
+    name: stt-network
