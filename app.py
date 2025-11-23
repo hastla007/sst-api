@@ -118,12 +118,54 @@ class CorrelationIdFilter(logging.Filter):
             record.correlation_id = 'N/A'
         return True
 
+
+old_record_factory = logging.getLogRecordFactory()
+
+
+def record_factory(*args, **kwargs):
+    """Ensure every log record has correlation_id to avoid formatting errors."""
+
+    record = old_record_factory(*args, **kwargs)
+    if not hasattr(record, 'correlation_id'):
+        record.correlation_id = 'N/A'
+    return record
+
+
+logging.setLogRecordFactory(record_factory)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] %(message)s'
 )
 logger = logging.getLogger(__name__)
 logger.addFilter(CorrelationIdFilter())
+
+
+class InMemoryLogHandler(logging.Handler):
+    """Store recent log lines in memory for retrieval via the API."""
+
+    def __init__(self, buffer: deque, maxlen: int = 1000):
+        super().__init__()
+        self.buffer = buffer
+        self.maxlen = maxlen
+        self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] %(message)s')
+
+    def emit(self, record):
+        try:
+            message = self.format(record)
+            self.buffer.append({
+                "level": record.levelname,
+                "message": message
+            })
+        except Exception:
+            # Never let logging crashes break the app
+            self.handleError(record)
+
+
+log_buffer = deque(maxlen=1000)
+memory_handler = InMemoryLogHandler(log_buffer)
+memory_handler.addFilter(CorrelationIdFilter())
+logging.getLogger().addHandler(memory_handler)
 
 # Configuration
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB limit
@@ -176,7 +218,7 @@ AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
 AZURE_CONTAINER = os.getenv("AZURE_CONTAINER", "stt-audio-files")
 
 # Diarization Configuration
-DIARIZATION_MODEL = os.getenv("DIARIZATION_MODEL", "pyannote/speaker-diarization")
+DIARIZATION_MODEL = os.getenv("DIARIZATION_MODEL", "pyannote/speaker-diarization-3.1")
 HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN", "")  # Required for pyannote models
 
 # Initialize Redis client
@@ -2074,6 +2116,24 @@ async def get_supported_languages():
         "supported_languages": sorted(list(SUPPORTED_LANGUAGES)),
         "count": len(SUPPORTED_LANGUAGES),
         "note": "Language codes follow ISO 639-1 standard. Leave language parameter empty for auto-detection."
+    }
+
+
+
+@app.get("/logs")
+async def get_recent_logs(limit: int = 1000, level: Optional[str] = None):
+    """Return the most recent log lines (up to 1000) for quick troubleshooting."""
+
+    sanitized_limit = max(1, min(limit, 1000))
+    entries = list(log_buffer)
+
+    if level:
+        level = level.upper()
+        entries = [entry for entry in entries if entry.get("level") == level]
+
+    return {
+        "count": len(entries[-sanitized_limit:]),
+        "lines": entries[-sanitized_limit:]
     }
 
 
