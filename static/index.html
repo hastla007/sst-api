@@ -781,9 +781,6 @@
             }
         }
 
-            activeLogInterval = ms;
-        }
-
             async function loadHealth() {
                 const summary = document.getElementById('healthSummary');
                 const details = document.getElementById('healthDetails');
@@ -899,7 +896,6 @@
                 document.getElementById('curlGet').textContent = `curl -X GET ${state.apiBase}/transcriptions/{id} ${keyHeader}`.trim();
                 document.getElementById('curlLanguages').textContent = `curl -X GET ${state.apiBase}/languages`;
             }
-        }
 
             async function initializeDashboard() {
                 state.apiBase = await detectApiBase();
