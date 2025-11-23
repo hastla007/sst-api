@@ -8,7 +8,18 @@ from contextlib import contextmanager, asynccontextmanager
 import os
 import logging
 
+
+class CorrelationIdFilter(logging.Filter):
+    """Ensure correlation_id is always present for log formatting."""
+
+    def filter(self, record):
+        if not hasattr(record, "correlation_id"):
+            record.correlation_id = "N/A"
+        return True
+
+
 logger = logging.getLogger(__name__)
+logger.addFilter(CorrelationIdFilter())
 
 # Database URL from environment
 DATABASE_URL = os.getenv(
@@ -85,7 +96,9 @@ def init_db():
     """Initialize database tables"""
     from models import Base
     try:
-        Base.metadata.create_all(bind=engine)
+        with engine.begin() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+            Base.metadata.create_all(bind=conn)
         logger.info("Database tables created successfully")
     except Exception as e:
         logger.error(f"Error creating database tables: {e}")
@@ -97,6 +110,7 @@ async def init_db_async():
     from models import Base
     try:
         async with async_engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Database tables created successfully (async)")
     except Exception as e:
