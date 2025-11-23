@@ -170,6 +170,13 @@ Transcribe audio files with all enterprise features.
 - `use_cache` - Use cached results (boolean, default: true)
 - `project_id` - Project ID for organization (optional)
 
+**Authentication:**
+- When API authentication is enabled (`API_KEYS` set), include `X-API-Key` to
+  attribute usage to your organization and apply per-key rate limits.
+- If you don't provide a key, the request is still processed with IP-based rate
+  limiting, but endpoints that explicitly require a key (e.g., project
+  creation) will return `401`.
+
 **Example using curl:**
 ```bash
 curl -X POST "http://localhost:3008/transcribe" \
@@ -321,6 +328,20 @@ DIARIZATION_MODEL=pyannote/speaker-diarization-3.1
 > **Note:** If you previously set `pyannote/speaker-diarization` (or `-3.0`),
 > the app now upgrades that value automatically to `pyannote/speaker-diarization-3.1`
 > to avoid loading the deprecated pipeline that still depends on `speechbrain`.
+>
+> **pyannote 3.1 loading tip:** the 3.x diarization pipeline uses a new
+> architecture and must be loaded via `Pipeline.from_pretrained()` without extra
+> kwargs such as `segmentation=...` or `batch_size=...`. Passing those legacy
+> arguments will raise errors. A minimal, working loader looks like:
+>
+> ```python
+> from pyannote.audio import Pipeline
+> import os
+>
+> token = os.getenv("HUGGINGFACE_TOKEN")
+> pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=token)
+> pipeline.to("cuda" or "cpu")
+> ```
 
 Get your token from: https://huggingface.co/settings/tokens
 Accept model licenses:
