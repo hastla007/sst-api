@@ -413,8 +413,18 @@
     </main>
 
     <script>
+        function getDefaultApiBase() {
+            const stored = localStorage.getItem('apiBase');
+            if (stored) return stored;
+            const { protocol, hostname, port } = window.location;
+            if (port === '8005') {
+                return `${protocol}//${hostname}:8004`;
+            }
+            return window.location.origin;
+        }
+
         const state = {
-            apiBase: localStorage.getItem('apiBase') || window.location.origin,
+            apiBase: getDefaultApiBase(),
             apiKey: localStorage.getItem('apiKey') || ''
         };
 
@@ -444,7 +454,7 @@
 
         document.getElementById('settingsForm').addEventListener('submit', (e) => {
             e.preventDefault();
-            state.apiBase = document.getElementById('apiBase').value || window.location.origin;
+            state.apiBase = document.getElementById('apiBase').value || getDefaultApiBase();
             state.apiKey = document.getElementById('apiKey').value.trim();
             localStorage.setItem('apiBase', state.apiBase);
             localStorage.setItem('apiKey', state.apiKey);
@@ -455,7 +465,7 @@
         document.getElementById('clearSettings').addEventListener('click', () => {
             localStorage.removeItem('apiBase');
             localStorage.removeItem('apiKey');
-            state.apiBase = window.location.origin;
+            state.apiBase = getDefaultApiBase();
             state.apiKey = '';
             document.getElementById('apiBase').value = state.apiBase;
             document.getElementById('apiKey').value = '';
