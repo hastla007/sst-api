@@ -732,6 +732,7 @@
                 clearInterval(logIntervalId);
                 logIntervalId = null;
             }
+        }
 
             document.querySelectorAll('[data-log-interval]').forEach(btn => btn.classList.remove('active'));
 
@@ -740,6 +741,7 @@
                 if (activeBtn) activeBtn.classList.add('active');
                 logIntervalId = setInterval(loadLogs, ms);
             }
+        }
 
             activeLogInterval = ms;
         }
