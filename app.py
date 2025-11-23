@@ -118,12 +118,54 @@ class CorrelationIdFilter(logging.Filter):
             record.correlation_id = 'N/A'
         return True
 
+
+old_record_factory = logging.getLogRecordFactory()
+
+
+def record_factory(*args, **kwargs):
+    """Ensure every log record has correlation_id to avoid formatting errors."""
+
+    record = old_record_factory(*args, **kwargs)
+    if not hasattr(record, 'correlation_id'):
+        record.correlation_id = 'N/A'
+    return record
+
+
+logging.setLogRecordFactory(record_factory)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] %(message)s'
 )
 logger = logging.getLogger(__name__)
 logger.addFilter(CorrelationIdFilter())
+
+
+class InMemoryLogHandler(logging.Handler):
+    """Store recent log lines in memory for retrieval via the API."""
+
+    def __init__(self, buffer: deque, maxlen: int = 1000):
+        super().__init__()
+        self.buffer = buffer
+        self.maxlen = maxlen
+        self.formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] %(message)s')
+
+    def emit(self, record):
+        try:
+            message = self.format(record)
+            self.buffer.append({
+                "level": record.levelname,
+                "message": message
+            })
+        except Exception:
+            # Never let logging crashes break the app
+            self.handleError(record)
+
+
+log_buffer = deque(maxlen=1000)
+memory_handler = InMemoryLogHandler(log_buffer)
+memory_handler.addFilter(CorrelationIdFilter())
+logging.getLogger().addHandler(memory_handler)
 
 # Configuration
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB limit
@@ -176,7 +218,37 @@ AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
 AZURE_CONTAINER = os.getenv("AZURE_CONTAINER", "stt-audio-files")
 
 # Diarization Configuration
-DIARIZATION_MODEL = os.getenv("DIARIZATION_MODEL", "pyannote/speaker-diarization")
+LEGACY_DIARIZATION_MODELS = {
+    "pyannote/speaker-diarization",
+    "pyannote/speaker-diarization-3.0",
+}
+
+
+def resolve_diarization_model(raw_model: str | None) -> str:
+    """Normalize diarization model IDs and force legacy aliases to 3.1.
+
+    The new pyannote/speaker-diarization-3.1 pipeline removes dependencies on
+    speechbrain and torchaudio._backend. We upgrade any legacy aliases to the
+    3.1 ID to avoid loading the deprecated pipeline when old environment
+    variables linger.
+    """
+
+    target = "pyannote/speaker-diarization-3.1"
+    if not raw_model:
+        logger.info("No diarization model provided; defaulting to %s", target)
+        return target
+
+    cleaned = raw_model.strip()
+    if cleaned in LEGACY_DIARIZATION_MODELS:
+        logger.warning(
+            "Legacy diarization model '%s' detected; upgrading to '%s'", cleaned, target
+        )
+        return target
+
+    return cleaned
+
+
+DIARIZATION_MODEL = resolve_diarization_model(os.getenv("DIARIZATION_MODEL"))
 HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN", "")  # Required for pyannote models
 
 # Initialize Redis client
@@ -300,6 +372,7 @@ logger.info("Model loaded successfully")
 diarization_pipeline = None
 if DIARIZATION_AVAILABLE and HF_TOKEN:
     try:
+        logger.info("Loading diarization pipeline: %s", DIARIZATION_MODEL)
         diarization_pipeline = Pipeline.from_pretrained(
             DIARIZATION_MODEL,
             use_auth_token=HF_TOKEN
@@ -2074,6 +2147,24 @@ async def get_supported_languages():
         "supported_languages": sorted(list(SUPPORTED_LANGUAGES)),
         "count": len(SUPPORTED_LANGUAGES),
         "note": "Language codes follow ISO 639-1 standard. Leave language parameter empty for auto-detection."
+    }
+
+
+
+@app.get("/logs")
+async def get_recent_logs(limit: int = 1000, level: Optional[str] = None):
+    """Return the most recent log lines (up to 1000) for quick troubleshooting."""
+
+    sanitized_limit = max(1, min(limit, 1000))
+    entries = list(log_buffer)
+
+    if level:
+        level = level.upper()
+        entries = [entry for entry in entries if entry.get("level") == level]
+
+    return {
+        "count": len(entries[-sanitized_limit:]),
+        "lines": entries[-sanitized_limit:]
     }
 
 
