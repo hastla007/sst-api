@@ -17,6 +17,6 @@ COPY app.py .
 # Pre-download Whisper model (optional, saves time on first run)
 # RUN python -c "import whisper; whisper.load_model('base')"
 
-EXPOSE 8000
+EXPOSE 8004
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8004"]
