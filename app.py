@@ -375,7 +375,9 @@ if DIARIZATION_AVAILABLE and HF_TOKEN:
         logger.info("Loading diarization pipeline: %s", DIARIZATION_MODEL)
         diarization_pipeline = Pipeline.from_pretrained(
             DIARIZATION_MODEL,
-            use_auth_token=HF_TOKEN
+            segmentation="pyannote/segmentation-3.0",
+            embedding="pyannote/embedder-3.0",
+            use_auth_token=HF_TOKEN,
         )
         if USE_GPU:
             import torch
