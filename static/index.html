@@ -196,6 +196,7 @@
             <nav aria-label="Primary">
                 <button class="active" data-view="speech-view">Speech-to-Text</button>
                 <button data-view="jobs-view">SST Jobs</button>
+                <button data-view="metrics-view">Metrics</button>
                 <button data-view="settings-view">Settings</button>
                 <button data-view="docs-view">API Documentation</button>
             </nav>
@@ -330,6 +331,38 @@
             </div>
         </section>
 
+        <section class="view" id="metrics-view">
+            <div class="panel">
+                <h2>Metrics</h2>
+                <p>Live operational metrics for the database, jobs, endpoints, and errors.</p>
+                <div class="two-col">
+                    <div class="card">
+                        <h3>System Health</h3>
+                        <div id="healthSummary" class="muted">Loading health...</div>
+                        <div id="healthDetails" class="pill-grid"></div>
+                    </div>
+                    <div class="card">
+                        <h3>Usage Analytics</h3>
+                        <div id="analyticsSummary" class="muted">Loading analytics...</div>
+                        <div id="analyticsDetails" class="pill-grid"></div>
+                    </div>
+                </div>
+                <div class="two-col" style="margin-top:14px;">
+                    <div class="card">
+                        <h3>Organization Usage</h3>
+                        <p class="muted">Requires API key to scope usage for your organization.</p>
+                        <div id="orgAnalyticsSummary" class="muted">Loading usage...</div>
+                        <div id="orgAnalyticsDetails" class="pill-grid"></div>
+                    </div>
+                    <div class="card">
+                        <h3>Prometheus Metrics</h3>
+                        <p class="muted">Raw counters and gauges exported at <code>/metrics</code>.</p>
+                        <pre id="prometheusMetrics" style="max-height:240px; overflow:auto; background:#0f172a;"></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section class="view" id="settings-view">
             <div class="panel">
                 <h2>Settings</h2>
@@ -393,6 +426,10 @@
                 views.forEach(v => v.classList.remove('active'));
                 const view = document.getElementById(btn.dataset.view);
                 if (view) view.classList.add('active');
+
+                if (btn.dataset.view === 'metrics-view') {
+                    loadMetrics();
+                }
             });
         });
 
@@ -586,6 +623,107 @@
             }
         }
 
+        async function loadMetrics() {
+            await Promise.all([
+                loadHealth(),
+                loadAnalytics(),
+                loadOrgAnalytics(),
+                loadPrometheus()
+            ]);
+        }
+
+        async function loadHealth() {
+            const summary = document.getElementById('healthSummary');
+            const details = document.getElementById('healthDetails');
+            summary.textContent = 'Loading health...';
+            details.innerHTML = '';
+            try {
+                const res = await fetch(`${state.apiBase}/health`);
+                if (!res.ok) throw new Error('Failed to load health');
+                const data = await res.json();
+                summary.textContent = data.status ? `Status: ${data.status}` : 'Status unavailable';
+                const pills = [];
+                pills.push(`<div class="pill"><strong>Model:</strong> ${data.model || 'n/a'}</div>`);
+                pills.push(`<div class="pill"><strong>Device:</strong> ${data.device || 'n/a'}</div>`);
+                if (data.features) {
+                    pills.push(`<div class="pill"><strong>Database:</strong> ${data.features.database}</div>`);
+                    pills.push(`<div class="pill"><strong>Caching:</strong> ${data.features.caching}</div>`);
+                    pills.push(`<div class="pill"><strong>Async:</strong> ${data.features.async_processing}</div>`);
+                    pills.push(`<div class="pill"><strong>Metrics:</strong> ${data.features.metrics ? 'enabled' : 'disabled'}</div>`);
+                }
+                details.innerHTML = pills.join('');
+            } catch (err) {
+                summary.textContent = err.message;
+            }
+        }
+
+        async function loadAnalytics() {
+            const summary = document.getElementById('analyticsSummary');
+            const details = document.getElementById('analyticsDetails');
+            summary.textContent = 'Loading analytics...';
+            details.innerHTML = '';
+            try {
+                const headers = {};
+                if (state.apiKey) headers['X-API-Key'] = state.apiKey;
+                const res = await fetch(`${state.apiBase}/analytics`, { headers });
+                if (!res.ok) throw new Error('Failed to load analytics');
+                const data = await res.json();
+                summary.textContent = `${data.total_requests || 0} total requests (${data.successful_requests || 0} successful)`;
+                const pills = [];
+                pills.push(`<div class="pill"><strong>Failures:</strong> ${data.failed_requests || 0}</div>`);
+                pills.push(`<div class="pill"><strong>Success Rate:</strong> ${((data.success_rate || 0) * 100).toFixed(1)}%</div>`);
+                pills.push(`<div class="pill"><strong>Avg Processing:</strong> ${(data.average_processing_time || 0).toFixed(2)}s</div>`);
+                if (data.cache_statistics) {
+                    pills.push(`<div class="pill"><strong>Cache Hit Rate:</strong> ${((data.cache_statistics.hit_rate || 0) * 100).toFixed(1)}%</div>`);
+                    pills.push(`<div class="pill"><strong>Cache Hits:</strong> ${data.cache_statistics.hits || 0}</div>`);
+                    pills.push(`<div class="pill"><strong>Cache Misses:</strong> ${data.cache_statistics.misses || 0}</div>`);
+                }
+                details.innerHTML = pills.join('');
+            } catch (err) {
+                summary.textContent = err.message;
+            }
+        }
+
+        async function loadOrgAnalytics() {
+            const summary = document.getElementById('orgAnalyticsSummary');
+            const details = document.getElementById('orgAnalyticsDetails');
+            summary.textContent = 'Loading usage...';
+            details.innerHTML = '';
+            if (!state.apiKey) {
+                summary.textContent = 'Provide an API key to view organization usage.';
+                return;
+            }
+            try {
+                const headers = { 'X-API-Key': state.apiKey };
+                const res = await fetch(`${state.apiBase}/usage/analytics`, { headers });
+                if (!res.ok) throw new Error('Failed to load usage analytics');
+                const data = await res.json();
+                summary.textContent = `${data.total_requests || 0} requests • ${(data.total_duration_minutes || 0).toFixed(1)} min • ${(data.total_cost_cents || 0)}¢`;
+                const pills = [];
+                if (data.features_usage) {
+                    pills.push(`<div class="pill"><strong>Diarization:</strong> ${data.features_usage.diarization || 0}</div>`);
+                    pills.push(`<div class="pill"><strong>Translation:</strong> ${data.features_usage.translation || 0}</div>`);
+                    pills.push(`<div class="pill"><strong>Sentiment:</strong> ${data.features_usage.sentiment || 0}</div>`);
+                }
+                details.innerHTML = pills.join('');
+            } catch (err) {
+                summary.textContent = err.message;
+            }
+        }
+
+        async function loadPrometheus() {
+            const pre = document.getElementById('prometheusMetrics');
+            pre.textContent = 'Loading...';
+            try {
+                const res = await fetch(`${state.apiBase}/metrics`);
+                if (!res.ok) throw new Error('Metrics unavailable');
+                const text = await res.text();
+                pre.textContent = text.slice(0, 4000) + (text.length > 4000 ? '\n... (truncated)' : '');
+            } catch (err) {
+                pre.textContent = err.message;
+            }
+        }
+
         async function loadJobDetail(id) {
             const headers = {};
             if (state.apiKey) headers['X-API-Key'] = state.apiKey;
@@ -615,6 +753,7 @@
         loadLanguages();
         loadJobs();
         updateCurlExamples();
+        loadMetrics();
     </script>
 </body>
 </html>
