@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   # PostgreSQL database for persistent storage
   postgres:
     image: postgres:15-alpine
     container_name: stt-postgres
     ports:
-      - "5432:5432"
+      - "5437:5432"
     environment:
       - POSTGRES_DB=stt_db
       - POSTGRES_USER=stt_user
@@ -36,41 +34,41 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # Main STT API service (v3.0 with all enterprise features)
+  # Main STT API service (with GPU)
   stt-service:
     build: .
     container_name: stt-service
+    runtime: nvidia   # <---- REQUIRED for Docker Desktop/WSL2
     ports:
-      - "3008:8000"
+      - "8004:8004"
     environment:
-      # Whisper model configuration
-      - WHISPER_MODEL=base  # Options: tiny, base, small, medium, large
+      - WHISPER_MODEL=base
+      - USE_GPU=true
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-      # Security settings
-      - API_KEYS=${API_KEYS:-}  # Comma-separated API keys (optional)
-      - CORS_ORIGINS=${CORS_ORIGINS:-*}  # Allowed CORS origins
+      # API security
+      - API_KEYS=${API_KEYS:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
 
       # Rate limiting
       - RATE_LIMIT_REQUESTS=10
-      - RATE_LIMIT_WINDOW=60  # seconds
+      - RATE_LIMIT_WINDOW=60
 
-      # Database configuration (PostgreSQL)
+      # Database configuration
       - DATABASE_URL=postgresql://stt_user:stt_password@postgres:5432/stt_db
 
-      # Redis configuration
+      # Redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      - CACHE_TTL=3600  # Cache TTL in seconds
+      - CACHE_TTL=3600
 
-      # Celery configuration
+      # Celery
       - CELERY_BROKER=redis://redis:6379/1
       - CELERY_BACKEND=redis://redis:6379/2
 
-      # GPU support (set to "true" if using GPU)
-      - USE_GPU=false
-
-      # Cloud Storage Configuration (optional)
+      # Cloud Storage
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_BUCKET=${AWS_BUCKET:-stt-audio-files}
@@ -82,61 +80,6 @@ services:
       - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING:-}
       - AZURE_CONTAINER=${AZURE_CONTAINER:-stt-audio-files}
 
-      # Speaker Diarization (requires HuggingFace token)
-      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
-      - DIARIZATION_MODEL=pyannote/speaker-diarization-3.1
-
-    volumes:
-      - ./temp:/tmp
-      - ./models:/root/.cache/whisper  # Cache Whisper models
-      - ./transformers_cache:/root/.cache/huggingface  # Cache transformers models
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 8G  # Increased for ML models
-        reservations:
-          memory: 4G
-
-  # Celery worker for async task processing with all features
-  celery-worker:
-    build: .
-    container_name: stt-celery-worker
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
-    environment:
-      # Whisper model configuration (same as main service)
-      - WHISPER_MODEL=base
-
-      # Database configuration
-      - DATABASE_URL=postgresql://stt_user:stt_password@postgres:5432/stt_db
-
-      # Redis configuration
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-
-      # Celery configuration
-      - CELERY_BROKER=redis://redis:6379/1
-      - CELERY_BACKEND=redis://redis:6379/2
-
-      # GPU support
-      - USE_GPU=false
-
-      # Cloud Storage Configuration
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
-      - AWS_BUCKET=${AWS_BUCKET:-stt-audio-files}
-      - AWS_REGION=${AWS_REGION:-us-east-1}
-
       # Speaker Diarization
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
       - DIARIZATION_MODEL=pyannote/speaker-diarization-3.1
@@ -145,20 +88,72 @@ services:
       - ./temp:/tmp
       - ./models:/root/.cache/whisper
       - ./transformers_cache:/root/.cache/huggingface
+
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-        reservations:
-          memory: 4G
 
-  # Optional: Prometheus for metrics collection
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Lightweight static frontend
+  frontend:
+    build: .
+    container_name: stt-frontend
+    command: uvicorn frontend:frontend --host 0.0.0.0 --port 8005
+    ports:
+      - "8005:8005"
+    depends_on:
+      stt-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # Celery worker
+  celery-worker:
+    build: .
+    container_name: stt-celery-worker
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - WHISPER_MODEL=base
+      - DATABASE_URL=postgresql://stt_user:stt_password@postgres:5432/stt_db
+
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+
+      - CELERY_BROKER=redis://redis:6379/1
+      - CELERY_BACKEND=redis://redis:6379/2
+
+      - USE_GPU=false
+
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_BUCKET=${AWS_BUCKET:-stt-audio-files}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      - DIARIZATION_MODEL=pyannote/speaker-diarization-3.1
+
+    volumes:
+      - ./temp:/tmp
+      - ./models:/root/.cache/whisper
+      - ./transformers_cache:/root/.cache/huggingface
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+  # Prometheus
   prometheus:
     image: prom/prometheus:latest
     container_name: stt-prometheus
@@ -167,14 +162,10 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
     restart: unless-stopped
     profiles:
       - monitoring
 
-  # Optional: Grafana for metrics visualization
   grafana:
     image: grafana/grafana:latest
     container_name: stt-grafana
