@@ -751,7 +751,6 @@
 
                 activeLogInterval = ms;
             }
-        }
 
             async function loadLogs() {
                 const output = document.getElementById('logsOutput');
@@ -765,7 +764,7 @@
                     if (!res.ok) throw new Error('Failed to load logs');
                     const data = await res.json();
                     const lines = Array.isArray(data.lines) ? data.lines : [];
-                    output.textContent = lines.map(line => line.message || '').join('\n');
+                    output.textContent = lines.map(line => line.message || '').join('\\n');
                     if (lines.length === 0) {
                         output.textContent = 'No logs available yet.';
                     }
@@ -775,7 +774,6 @@
                     status.textContent = '';
                 }
             }
-        }
 
             async function loadMetrics() {
                 await Promise.all([
@@ -785,7 +783,6 @@
                     loadPrometheus()
                 ]);
             }
-        }
 
             async function loadHealth() {
                 const summary = document.getElementById('healthSummary');
