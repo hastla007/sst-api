@@ -191,7 +191,7 @@ AZURE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
 AZURE_CONTAINER = os.getenv("AZURE_CONTAINER", "stt-audio-files")
 
 # Diarization Configuration
-DIARIZATION_MODEL = os.getenv("DIARIZATION_MODEL", "pyannote/speaker-diarization")
+DIARIZATION_MODEL = os.getenv("DIARIZATION_MODEL", "pyannote/speaker-diarization-3.1")
 HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN", "")  # Required for pyannote models
 
 # Initialize Redis client

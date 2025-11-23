@@ -82,7 +82,7 @@ services:
 
       # Speaker Diarization (requires HuggingFace token)
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
-      - DIARIZATION_MODEL=pyannote/speaker-diarization
+      - DIARIZATION_MODEL=pyannote/speaker-diarization-3.1
 
     volumes:
       - ./temp:/tmp
@@ -149,7 +149,7 @@ services:
 
       # Speaker Diarization
       - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
-      - DIARIZATION_MODEL=pyannote/speaker-diarization
+      - DIARIZATION_MODEL=pyannote/speaker-diarization-3.1
 
     volumes:
       - ./temp:/tmp
