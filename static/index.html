@@ -745,6 +745,7 @@
 
                 activeLogInterval = ms;
             }
+        }
 
             async function loadLogs() {
                 const output = document.getElementById('logsOutput');
@@ -768,6 +769,7 @@
                     status.textContent = '';
                 }
             }
+        }
 
             async function loadMetrics() {
                 await Promise.all([
@@ -777,6 +779,7 @@
                     loadPrometheus()
                 ]);
             }
+        }
 
             async function loadHealth() {
                 const summary = document.getElementById('healthSummary');
