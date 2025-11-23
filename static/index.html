@@ -208,12 +208,12 @@
                 </div>
             </div>
             <nav aria-label="Primary">
-                <button class="active" data-view="speech-view">Speech-to-Text</button>
-                <button data-view="jobs-view">SST Jobs</button>
-                <button data-view="metrics-view">Metrics</button>
-                <button data-view="logs-view">Logs</button>
-                <button data-view="settings-view">Settings</button>
-                <button data-view="docs-view">API Documentation</button>
+                <button type="button" class="active" data-view="speech-view">Speech-to-Text</button>
+                <button type="button" data-view="jobs-view">SST Jobs</button>
+                <button type="button" data-view="metrics-view">Metrics</button>
+                <button type="button" data-view="logs-view">Logs</button>
+                <button type="button" data-view="settings-view">Settings</button>
+                <button type="button" data-view="docs-view">API Documentation</button>
             </nav>
         </div>
     </header>
@@ -523,8 +523,14 @@
             }
 
             document.querySelectorAll('nav button').forEach(btn => {
-                btn.addEventListener('click', () => setActiveView(btn.dataset.view));
+                btn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    setActiveView(btn.dataset.view);
+                });
             });
+
+            // Ensure navigation works immediately even if initialization work fails later.
+            setActiveView('speech-view');
 
             document.getElementById('enableTranslation').addEventListener('change', (e) => {
                 document.getElementById('translationLangGroup').style.display = e.target.checked ? 'block' : 'none';
@@ -898,12 +904,19 @@
             }
 
             async function initializeDashboard() {
-                state.apiBase = await detectApiBase();
-                applySettingsToForm();
-                await loadLanguages();
-                loadJobs();
-                loadMetrics();
-                setActiveView('speech-view');
+                try {
+                    state.apiBase = await detectApiBase();
+                    applySettingsToForm();
+                    await loadLanguages();
+                    loadJobs();
+                    loadMetrics();
+                } catch (err) {
+                    console.error('Dashboard initialization failed', err);
+                    document.getElementById('statusBanner').innerHTML = '<div class="status-dot" style="background:#ef4444; box-shadow:0 0 0 6px rgba(239,68,68,0.15)"></div><div><strong>Initialization failed</strong><div class="muted">' + (err.message || 'See console for details') + '</div></div>';
+                } finally {
+                    const activeButton = document.querySelector('nav button.active');
+                    setActiveView(activeButton ? activeButton.dataset.view : 'speech-view');
+                }
             }
 
             initializeDashboard();
