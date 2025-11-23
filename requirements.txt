@@ -24,8 +24,7 @@ azure-storage-blob==12.19.0
 
 # ---- AUDIO / ML ----
 pyannote.audio==3.1.1
-torch==2.1.2
-torchaudio==2.1.2
+
 
 python-docx==1.1.0
 reportlab==4.0.7
