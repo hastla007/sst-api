@@ -736,6 +736,8 @@
 
             document.querySelectorAll('[data-log-interval]').forEach(btn => btn.classList.remove('active'));
 
+            document.querySelectorAll('[data-log-interval]').forEach(btn => btn.classList.remove('active'));
+
             if (ms > 0) {
                 const activeBtn = document.querySelector(`[data-log-interval="${ms}"]`);
                 if (activeBtn) activeBtn.classList.add('active');
