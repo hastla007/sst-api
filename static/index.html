@@ -745,6 +745,7 @@
 
                 activeLogInterval = ms;
             }
+        }
 
             async function loadLogs() {
                 const output = document.getElementById('logsOutput');
@@ -768,6 +769,7 @@
                     status.textContent = '';
                 }
             }
+        }
 
             async function loadMetrics() {
                 await Promise.all([
@@ -777,6 +779,10 @@
                     loadPrometheus()
                 ]);
             }
+        }
+
+            activeLogInterval = ms;
+        }
 
             async function loadHealth() {
                 const summary = document.getElementById('healthSummary');
@@ -893,6 +899,7 @@
                 document.getElementById('curlGet').textContent = `curl -X GET ${state.apiBase}/transcriptions/{id} ${keyHeader}`.trim();
                 document.getElementById('curlLanguages').textContent = `curl -X GET ${state.apiBase}/languages`;
             }
+        }
 
             async function initializeDashboard() {
                 state.apiBase = await detectApiBase();

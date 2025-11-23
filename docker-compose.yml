@@ -53,7 +53,7 @@ services:
       - RATE_LIMIT_WINDOW=60  # seconds
 
       # Database configuration (PostgreSQL)
-      - DATABASE_URL=postgresql://stt_user:stt_password@postgres:5437/stt_db
+      - DATABASE_URL=postgresql://stt_user:stt_password@postgres:5432/stt_db
 
       # Redis configuration
       - REDIS_HOST=redis
@@ -128,7 +128,7 @@ services:
       - WHISPER_MODEL=base
 
       # Database configuration
-      - DATABASE_URL=postgresql://stt_user:stt_password@postgres:5437/stt_db
+      - DATABASE_URL=postgresql://stt_user:stt_password@postgres:5432/stt_db
 
       # Redis configuration
       - REDIS_HOST=redis
