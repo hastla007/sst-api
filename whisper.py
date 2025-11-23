@@ -34,6 +34,12 @@ def _load_real_whisper() -> Optional[object]:
     spec = importlib.machinery.PathFinder.find_spec("whisper", search_path)
     if spec and spec.loader and spec.origin != __file__:
         module = importlib.util.module_from_spec(spec)
+        # Ensure the module is registered before execution so relative imports
+        # inside the real package (e.g., ``from .audio import ...``) resolve
+        # correctly. Without this, the loader may treat the module as a plain
+        # file rather than a package, leading to ``'whisper' is not a package``
+        # errors during Docker builds.
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)  # type: ignore[arg-type]
         return module
     return None
