@@ -23,7 +23,8 @@ RUN pip install --upgrade pip setuptools wheel
 
 
 # Install CUDA PyTorch first
-RUN pip install torch==2.1.2 torchaudio==2.1.2 --index-url https://download.pytorch.org/whl/cu121/
+RUN pip install torch==2.2.2 torchvision==0.17.2 torchaudio==2.2.2  --extra-index-url https://download.pytorch.org/whl/cu121
+
 
 RUN pip install --no-cache-dir \
     torchmetrics==1.2.0 \
@@ -34,6 +35,7 @@ RUN pip install --no-cache-dir \
 # THEN install requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
 
 
 # Copy application
