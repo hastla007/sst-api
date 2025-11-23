@@ -107,6 +107,7 @@ services:
   frontend:
     build: .
     container_name: stt-frontend
+    runtime: nvidia 
     command: uvicorn frontend:frontend --host 0.0.0.0 --port 8005
     ports:
       - "8005:8005"
