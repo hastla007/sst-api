@@ -106,6 +106,18 @@ services:
         reservations:
           memory: 4G
 
+  # Lightweight static frontend served separately on port 8005
+  frontend:
+    build: .
+    container_name: stt-frontend
+    command: uvicorn frontend:frontend --host 0.0.0.0 --port 8005
+    ports:
+      - "8005:8005"
+    depends_on:
+      stt-service:
+        condition: service_started
+    restart: unless-stopped
+
   # Celery worker for async task processing with all features
   celery-worker:
     build: .
