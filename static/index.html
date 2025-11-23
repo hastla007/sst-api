@@ -3,600 +3,923 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enterprise STT API v3.0 - Dashboard</title>
+    <title>STT API Dashboard</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --primary: #6b5bff;
+            --primary-dark: #5143d9;
+            --muted: #6c7280;
+            --bg: #0f172a;
+            --card: #0b1221;
+            --border: #1f2937;
         }
+
+        * { box-sizing: border-box; }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #ffffff;
+            color: #e5e7eb;
             min-height: 100vh;
-            padding: 20px;
         }
 
-        .container {
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            backdrop-filter: blur(12px);
+            background: rgba(15,23,42,0.75);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .topbar {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
         }
 
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
         }
 
-        .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
+        .brand span {
+            color: #a5b4fc;
         }
 
-        .header p {
-            font-size: 1.1em;
-            opacity: 0.9;
+        nav {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            padding: 20px;
-            background: #f8f9fa;
-        }
-
-        .feature-tag {
-            background: white;
-            padding: 10px 15px;
+        nav button {
+            background: transparent;
+            color: #e5e7eb;
+            border: 1px solid var(--border);
             border-radius: 10px;
-            text-align: center;
-            font-size: 0.9em;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-
-        .content {
-            padding: 40px;
-        }
-
-        .upload-section {
-            background: #f8f9fa;
-            padding: 30px;
-            border-radius: 15px;
-            margin-bottom: 30px;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
+            padding: 10px 14px;
             font-weight: 600;
-            color: #333;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
 
-        input[type="file"],
-        input[type="text"],
-        select,
-        textarea {
+        nav button.active {
+            background: linear-gradient(120deg, var(--primary), #8b5cf6);
+            box-shadow: 0 10px 30px rgba(107,91,255,0.4);
+            border-color: transparent;
+        }
+
+        nav button:hover { border-color: #3b82f6; }
+
+        main { max-width: 1200px; margin: 28px auto 60px; padding: 0 20px; }
+
+        .panel {
+            background: rgba(14,20,36,0.9);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 18px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+        }
+
+        h1 { margin: 0 0 6px; font-size: 28px; }
+        h2 { margin: 16px 0 10px; font-size: 22px; }
+        h3 { margin: 16px 0 8px; font-size: 18px; color: #cbd5f5; }
+        p  { margin: 0 0 10px; color: var(--muted); }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 18px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px;
+        }
+
+        label { display: block; font-weight: 600; margin-bottom: 6px; }
+        input[type="text"], input[type="url"], select, textarea {
             width: 100%;
             padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 1em;
-            transition: border-color 0.3s;
+            background: #0f172a;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: #e5e7eb;
+            font-size: 14px;
         }
 
-        input:focus,
-        select:focus,
-        textarea:focus {
-            outline: none;
-            border-color: #667eea;
+        textarea { resize: vertical; min-height: 80px; }
+
+        input[type="file"] {
+            width: 100%;
+            color: #cbd5f5;
         }
 
-        .checkbox-group {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 10px;
-        }
-
-        .checkbox-label {
-            display: flex;
-            align-items: center;
-            font-weight: normal;
-        }
-
-        .checkbox-label input {
-            width: auto;
-            margin-right: 8px;
-        }
+        .inline-options { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
+        .inline-options label { display: flex; align-items: center; gap: 8px; font-weight: 500; }
 
         .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 40px;
-            border: none;
-            border-radius: 10px;
-            font-size: 1.1em;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            font-weight: 600;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .result-section {
-            background: #f8f9fa;
-            padding: 30px;
-            border-radius: 15px;
-            margin-top: 30px;
-            display: none;
-        }
-
-        .result-section.active {
-            display: block;
-        }
-
-        .result-header {
-            display: flex;
-            justify-content: space-between;
+            display: inline-flex;
             align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .result-content {
-            background: white;
-            padding: 20px;
-            border-radius: 10px;
-            max-height: 500px;
-            overflow-y: auto;
-        }
-
-        .segment {
-            padding: 15px;
-            margin-bottom: 15px;
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
-            border-radius: 5px;
-        }
-
-        .segment-time {
-            font-size: 0.9em;
-            color: #666;
-            margin-bottom: 5px;
-        }
-
-        .segment-speaker {
-            font-weight: 600;
-            color: #764ba2;
-            margin-bottom: 5px;
-        }
-
-        .segment-text {
-            line-height: 1.6;
-        }
-
-        .confidence-bar {
-            height: 5px;
-            background: #e0e0e0;
-            border-radius: 3px;
-            margin-top: 8px;
-            overflow: hidden;
-        }
-
-        .confidence-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            transition: width 0.3s;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .stat-card {
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-        }
-
-        .stat-value {
-            font-size: 1.8em;
+            gap: 8px;
+            padding: 12px 18px;
+            background: linear-gradient(120deg, var(--primary), #8b5cf6);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
             font-weight: 700;
-            color: #667eea;
+            cursor: pointer;
+            box-shadow: 0 12px 30px rgba(107,91,255,0.35);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
 
-        .stat-label {
-            font-size: 0.9em;
-            color: #666;
-            margin-top: 5px;
-        }
+        .btn.secondary { background: #1f2937; box-shadow: none; border: 1px solid var(--border); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 15px 40px rgba(107,91,255,0.35); }
 
-        .loading {
+        .result, .table-wrapper { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-top: 14px; }
+        .result pre { white-space: pre-wrap; word-break: break-word; background: #0f172a; padding: 14px; border-radius: 12px; overflow: auto; border: 1px solid var(--border); }
+
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+        th { color: #cbd5f5; font-weight: 700; }
+        tr:hover td { background: rgba(99,102,241,0.05); }
+
+        .badge { padding: 6px 10px; border-radius: 8px; font-weight: 700; font-size: 12px; display: inline-block; }
+        .badge.success { background: rgba(74,222,128,0.15); color: #4ade80; }
+        .badge.pending { background: rgba(250,204,21,0.12); color: #facc15; }
+        .badge.error { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .muted { color: var(--muted); }
+
+        .view { display: none; }
+        .view.active { display: block; }
+
+        .pill-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+        .pill { background: rgba(255,255,255,0.04); border: 1px solid var(--border); padding: 10px 12px; border-radius: 12px; }
+
+        code { background: #0f172a; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
+        pre { background: #0f172a; padding: 12px; border-radius: 12px; border: 1px solid var(--border); overflow-x: auto; }
+
+        .log-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+        .log-controls button.active { background: var(--primary); color: #ffffff; border-color: var(--primary); }
+        .logs-output { background: #0f172a; border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-height: 260px; max-height: 520px; overflow: auto; }
+
+        .status-banner { background: rgba(107,91,255,0.12); border: 1px solid rgba(107,91,255,0.35); color: #cbd5f5; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 6px rgba(34,197,94,0.1); }
+
+        footer {
             text-align: center;
-            padding: 40px;
+            color: var(--muted);
+            padding: 24px 16px 30px;
         }
 
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
+        footer .heart {
+            color: #8b5cf6;
+            font-size: 18px;
+            vertical-align: middle;
         }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .sentiment-badge {
-            display: inline-block;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-weight: 600;
-            font-size: 0.9em;
-        }
-
-        .sentiment-positive {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .sentiment-negative {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            border-left: 4px solid #dc3545;
+        @media (max-width: 900px) {
+            .two-col { grid-template-columns: 1fr; }
+            nav { width: 100%; }
+            nav button { flex: 1 1 45%; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Enterprise STT API v3.0</h1>
-            <p>Advanced Speech-to-Text with AI-Powered Features</p>
+    <header>
+        <div class="topbar">
+            <div class="brand">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(120deg, var(--primary), #8b5cf6); display:flex; align-items:center; justify-content:center; font-weight:900;">STT</div>
+                <div>
+                    <div>STT</div>
+                    <span>API</span>
+                </div>
+            </div>
+            <nav aria-label="Primary">
+                <button type="button" class="active" data-view="speech-view">Speech-to-Text</button>
+                <button type="button" data-view="jobs-view">SST Jobs</button>
+                <button type="button" data-view="metrics-view">Metrics</button>
+                <button type="button" data-view="logs-view">Logs</button>
+                <button type="button" data-view="settings-view">Settings</button>
+                <button type="button" data-view="docs-view">API Documentation</button>
+            </nav>
         </div>
+    </header>
 
-        <div class="features-grid">
-            <div class="feature-tag">Auto Language Detection</div>
-            <div class="feature-tag">Speaker Diarization</div>
-            <div class="feature-tag">99 Languages</div>
-            <div class="feature-tag">Confidence Scores</div>
-            <div class="feature-tag">Translation</div>
-            <div class="feature-tag">Sentiment Analysis</div>
-            <div class="feature-tag">Cloud Storage</div>
-            <div class="feature-tag">Real-time Streaming</div>
-        </div>
-
-        <div class="content">
-            <div class="upload-section">
-                <h2 style="margin-bottom: 20px;">Transcribe Audio</h2>
-
-                <form id="transcribeForm">
-                    <div class="form-group">
-                        <label for="audioFile">Audio File</label>
-                        <input type="file" id="audioFile" accept="audio/*">
+    <main>
+        <section class="view active" id="speech-view">
+            <div class="panel">
+                <div class="status-banner" id="statusBanner">
+                    <div class="status-dot"></div>
+                    <div>
+                        <strong>Ready</strong>
+                        <div class="muted">Submit an audio file or URL to transcribe with diarization, translation, and sentiment options.</div>
                     </div>
+                </div>
+                <div class="two-col">
+                    <div class="card">
+                        <h2>Transcribe Audio</h2>
+                        <p>Send audio to <code>/transcribe</code> with all enterprise features enabled.</p>
+                        <form id="transcribeForm">
+                            <label for="audioFile">Audio File</label>
+                            <input type="file" id="audioFile" accept="audio/*">
 
-                    <div class="form-group">
-                        <label for="fileUrl">Or provide URL (S3, GCS, Azure, HTTP)</label>
-                        <input type="text" id="fileUrl" placeholder="s3://bucket/file.mp3 or https://example.com/audio.wav">
+                            <label for="fileUrl" style="margin-top:12px;">Or provide URL (S3, GCS, Azure, HTTP)</label>
+                            <input type="url" id="fileUrl" placeholder="https://example.com/audio.wav">
+
+                            <label for="language" style="margin-top:14px;">Language (empty = auto-detect)</label>
+                            <select id="language">
+                                <option value="">Auto Detect</option>
+                            </select>
+
+                            <label for="initialPrompt" style="margin-top:14px;">Custom Vocabulary / Context</label>
+                            <textarea id="initialPrompt" placeholder="E.g., Medical conversation about cardiology..."></textarea>
+
+                            <label for="exportFormat" style="margin-top:14px;">Export Format</label>
+                            <select id="exportFormat">
+                                <option value="json">JSON</option>
+                                <option value="srt">SRT (Subtitles)</option>
+                                <option value="vtt">VTT (WebVTT)</option>
+                                <option value="txt">Plain Text</option>
+                                <option value="docx">Word (DOCX)</option>
+                                <option value="pdf">PDF</option>
+                            </select>
+
+                            <div class="inline-options" style="margin-top:14px;">
+                                <label><input type="checkbox" id="enableDiarization"> Speaker diarization</label>
+                                <label><input type="checkbox" id="enableTranslation"> Translation</label>
+                                <label><input type="checkbox" id="enableSentiment"> Sentiment</label>
+                                <label><input type="checkbox" id="returnConfidence" checked> Confidence scores</label>
+                                <label><input type="checkbox" id="useCache" checked> Use cache</label>
+                            </div>
+
+                            <div id="translationLangGroup" style="display:none; margin-top:10px;">
+                                <label for="targetLanguage">Translate to</label>
+                                <select id="targetLanguage">
+                                    <option value="es">Spanish</option>
+                                    <option value="fr">French</option>
+                                    <option value="de">German</option>
+                                    <option value="zh">Chinese</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="ko">Korean</option>
+                                    <option value="pt">Portuguese</option>
+                                    <option value="it">Italian</option>
+                                    <option value="ru">Russian</option>
+                                </select>
+                            </div>
+
+                            <label for="webhookUrl" style="margin-top:14px;">Webhook URL (for async processing)</label>
+                            <input type="url" id="webhookUrl" placeholder="https://example.com/webhook" />
+
+                            <div class="inline-options" style="margin-top:10px;">
+                                <label style="flex:1;">
+                                    Project ID
+                                    <input type="text" id="projectId" placeholder="Optional project id" />
+                                </label>
+                            </div>
+
+                            <button type="submit" class="btn" id="submitBtn" style="margin-top:16px;">Submit to /transcribe</button>
+                            <button type="button" class="btn secondary" id="resetBtn" style="margin-left:10px; margin-top:16px;">Reset Form</button>
+                        </form>
                     </div>
-
-                    <div class="form-group">
-                        <label for="language">Language (leave empty for auto-detection)</label>
-                        <select id="language">
-                            <option value="">Auto Detect</option>
-                            <option value="en">English</option>
-                            <option value="es">Spanish</option>
-                            <option value="fr">French</option>
-                            <option value="de">German</option>
-                            <option value="zh">Chinese</option>
-                            <option value="ja">Japanese</option>
-                            <option value="ko">Korean</option>
-                            <option value="pt">Portuguese</option>
-                            <option value="it">Italian</option>
-                            <option value="ru">Russian</option>
-                            <option value="ar">Arabic</option>
-                            <option value="hi">Hindi</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="initialPrompt">Custom Vocabulary / Context (optional)</label>
-                        <textarea id="initialPrompt" rows="3" placeholder="E.g., 'This is a medical conference about cardiovascular diseases...'"></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="exportFormat">Export Format</label>
-                        <select id="exportFormat">
-                            <option value="json">JSON</option>
-                            <option value="srt">SRT (Subtitles)</option>
-                            <option value="vtt">VTT (Web Subtitles)</option>
-                            <option value="txt">Plain Text</option>
-                            <option value="docx">Word Document</option>
-                            <option value="pdf">PDF</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Advanced Features</label>
-                        <div class="checkbox-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="enableDiarization"> Speaker Diarization
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="enableTranslation"> Translation
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="enableSentiment"> Sentiment Analysis
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="returnConfidence" checked> Confidence Scores
-                            </label>
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="useCache" checked> Use Cache
-                            </label>
+                    <div class="card">
+                        <h3>Latest Result</h3>
+                        <div id="resultSummary" class="muted">No transcription yet.</div>
+                        <div class="result" id="resultContainer" style="display:none;">
+                            <div id="resultMeta" class="pill-grid"></div>
+                            <h4 style="margin:14px 0 8px;">Text</h4>
+                            <pre id="resultText"></pre>
+                            <div id="segmentsContainer"></div>
                         </div>
                     </div>
-
-                    <div class="form-group" id="translationLangGroup" style="display:none;">
-                        <label for="targetLanguage">Translate to</label>
-                        <select id="targetLanguage">
-                            <option value="es">Spanish</option>
-                            <option value="fr">French</option>
-                            <option value="de">German</option>
-                            <option value="zh">Chinese</option>
-                            <option value="ja">Japanese</option>
-                            <option value="ko">Korean</option>
-                            <option value="pt">Portuguese</option>
-                            <option value="it">Italian</option>
-                            <option value="ru">Russian</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="apiKey">API Key (if required)</label>
-                        <input type="text" id="apiKey" placeholder="Your API key">
-                    </div>
-
-                    <button type="submit" class="btn" id="submitBtn">Transcribe Audio</button>
-                </form>
-            </div>
-
-            <div class="result-section" id="resultSection">
-                <div class="result-header">
-                    <h2>Transcription Results</h2>
                 </div>
-
-                <div id="statsContainer"></div>
-                <div id="resultContent" class="result-content"></div>
             </div>
+        </section>
 
-            <div class="loading" id="loadingIndicator" style="display:none;">
-                <div class="spinner"></div>
-                <p>Processing your audio...</p>
+        <section class="view" id="jobs-view">
+            <div class="panel">
+                <h2>SST Jobs</h2>
+                <p>Browse transcription jobs from <code>/transcriptions/search</code> and inspect details via <code>/transcriptions/{id}</code>.</p>
+                <div class="card">
+                    <div class="inline-options" style="margin-bottom:12px;">
+                        <label style="flex:2;">
+                            Search text or filename
+                            <input type="text" id="jobsQuery" placeholder="Leave empty to list all recent jobs" />
+                        </label>
+                        <label style="flex:1;">
+                            Limit
+                            <select id="jobsLimit">
+                                <option value="10">10</option>
+                                <option value="25">25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </label>
+                        <button class="btn" id="refreshJobs" type="button">Refresh Jobs</button>
+                    </div>
+                    <div class="table-wrapper">
+                        <table aria-label="Transcription jobs">
+                            <thead>
+                                <tr><th>ID</th><th>Filename</th><th>Status</th><th>Language</th><th>Created</th><th>Duration</th><th></th></tr>
+                            </thead>
+                            <tbody id="jobsTableBody">
+                                <tr><td colspan="7" class="muted">No jobs loaded yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="result" id="jobDetail" style="display:none;">
+                        <h4>Job Details</h4>
+                        <pre id="jobDetailPre"></pre>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
+        </section>
+
+        <section class="view" id="metrics-view">
+            <div class="panel">
+                <h2>Metrics</h2>
+                <p>Live operational metrics for the database, jobs, endpoints, and errors.</p>
+                <div class="two-col">
+                    <div class="card">
+                        <h3>System Health</h3>
+                        <div id="healthSummary" class="muted">Loading health...</div>
+                        <div id="healthDetails" class="pill-grid"></div>
+                    </div>
+                    <div class="card">
+                        <h3>Usage Analytics</h3>
+                        <div id="analyticsSummary" class="muted">Loading analytics...</div>
+                        <div id="analyticsDetails" class="pill-grid"></div>
+                    </div>
+                </div>
+                <div class="two-col" style="margin-top:14px;">
+                    <div class="card">
+                        <h3>Organization Usage</h3>
+                        <p class="muted">Requires API key to scope usage for your organization.</p>
+                        <div id="orgAnalyticsSummary" class="muted">Loading usage...</div>
+                        <div id="orgAnalyticsDetails" class="pill-grid"></div>
+                    </div>
+                    <div class="card">
+                        <h3>Prometheus Metrics</h3>
+                        <p class="muted">Raw counters and gauges exported at <code>/metrics</code>.</p>
+                        <pre id="prometheusMetrics" style="max-height:240px; overflow:auto; background:#0f172a;"></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="view" id="logs-view">
+            <div class="panel">
+                <h2>Logs</h2>
+                <p>Inspect the last 1000 log lines from the API service for quick troubleshooting.</p>
+                <div class="card">
+                    <div class="log-controls">
+                        <button class="btn secondary" id="logsManual">⟳ Manual Refresh</button>
+                        <button class="btn secondary" data-log-interval="5000">Auto 5s</button>
+                        <button class="btn secondary" data-log-interval="10000">Auto 10s</button>
+                        <button class="btn secondary" data-log-interval="30000">Auto 30s</button>
+                        <span id="logsStatus" class="muted"></span>
+                    </div>
+                    <div class="logs-output" id="logsOutput" aria-live="polite">No logs loaded yet.</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="view" id="settings-view">
+            <div class="panel">
+                <h2>Settings</h2>
+                <p>Persisted locally for this browser. These values are sent with each API request.</p>
+                <div class="card">
+                    <form id="settingsForm">
+                        <label for="apiBase">API Base URL</label>
+                        <input type="url" id="apiBase" required placeholder="https://api.example.com">
+
+                        <label for="apiKey" style="margin-top:14px;">API Key (sent as X-API-Key)</label>
+                        <input type="text" id="apiKey" placeholder="Optional" />
+
+                        <div class="inline-options" style="margin-top:14px;">
+                            <button class="btn" type="submit">Save Settings</button>
+                            <button class="btn secondary" type="button" id="clearSettings">Clear</button>
+                        </div>
+                    </form>
+                    <div class="pill" style="margin-top:14px;">
+                        <strong>Tip:</strong> If you use private HuggingFace pipelines for diarization, make sure the backend is configured with <code>HUGGINGFACE_TOKEN</code>.
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="view" id="docs-view">
+            <div class="panel">
+                <h2>API Documentation</h2>
+                <p>Quick-start guide for the primary endpoints exposed by this service.</p>
+                <div class="card">
+                    <h3>Endpoints</h3>
+                    <ul>
+                        <li><code>POST /transcribe</code> – Upload audio or provide <code>file_url</code> with options for diarization, translation, sentiment, confidence, caching, webhook callbacks, and export formats.</li>
+                        <li><code>GET /transcriptions/search?query=&lt;text&gt;&amp;limit=&lt;n&gt;</code> – Search or list transcription jobs.</li>
+                        <li><code>GET /transcriptions/{id}</code> – Retrieve a single transcription (status, text, metadata).</li>
+                        <li><code>GET /languages</code> – Enumerate supported language codes.</li>
+                        <li><code>/docs</code> or <code>/redoc</code> – Interactive OpenAPI docs.</li>
+                    </ul>
+
+                    <h3>cURL Examples</h3>
+                    <p>Examples update when you change settings.</p>
+                    <pre id="curlTranscribe"></pre>
+                    <pre id="curlSearch"></pre>
+                    <pre id="curlGet"></pre>
+                    <pre id="curlLanguages"></pre>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div>Made with <span class="heart">♥</span> for Your Business & Automations.</div>
+        <div>© 2025 STT-API by Nowdoo.at</div>
+        <div>Version: 1.00.0</div>
+    </footer>
 
     <script>
-        const API_BASE_URL = window.location.origin;
+        document.addEventListener('DOMContentLoaded', () => {
+            const state = {
+                apiBase: guessBackendBase(),
+                apiKey: localStorage.getItem('apiKey') || ''
+            };
 
-        // Show/hide translation language selector
-        document.getElementById('enableTranslation').addEventListener('change', (e) => {
-            document.getElementById('translationLangGroup').style.display = e.target.checked ? 'block' : 'none';
-        });
+            let logIntervalId = null;
+            let activeLogInterval = 0;
 
-        document.getElementById('transcribeForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const audioFile = document.getElementById('audioFile').files[0];
-            const fileUrl = document.getElementById('fileUrl').value.trim();
-
-            if (!audioFile && !fileUrl) {
-                alert('Please provide either an audio file or a file URL');
-                return;
+            function normalizeApiBase(value) {
+                if (!value) return null;
+                try {
+                    const url = new URL(value, window.location.origin);
+                    const portPart = url.port ? `:${url.port}` : '';
+                    return `${url.protocol}//${url.hostname}${portPart}`;
+                } catch (err) {
+                    console.warn('Invalid API base provided, falling back to default.', err);
+                    return null;
+                }
             }
 
-            const formData = new FormData();
-
-            if (audioFile) {
-                formData.append('file', audioFile);
+            function guessBackendBase() {
+                const { protocol, hostname, port } = window.location;
+                if (port === '8005') {
+                    return `${protocol}//${hostname}:8004`;
+                }
+                return `${protocol}//${hostname}${port ? ':' + port : ''}`;
             }
 
-            if (fileUrl) {
-                formData.append('file_url', fileUrl);
+            async function isApiReachable(base) {
+                try {
+                    const res = await fetch(`${base}/languages`);
+                    return res.ok;
+                } catch (err) {
+                    console.warn(`API base ${base} not reachable`, err);
+                    return false;
+                }
             }
 
-            const language = document.getElementById('language').value;
-            if (language) formData.append('language', language);
+            async function detectApiBase() {
+                const stored = normalizeApiBase(localStorage.getItem('apiBase'));
+                const guesses = [stored, guessBackendBase(), `${window.location.protocol}//${window.location.hostname}:8004`]
+                    .filter(Boolean)
+                    .filter((v, idx, arr) => arr.indexOf(v) === idx);
 
-            const initialPrompt = document.getElementById('initialPrompt').value.trim();
-            if (initialPrompt) formData.append('initial_prompt', initialPrompt);
-
-            formData.append('export_format', document.getElementById('exportFormat').value);
-            formData.append('enable_diarization', document.getElementById('enableDiarization').checked);
-            formData.append('enable_translation', document.getElementById('enableTranslation').checked);
-            formData.append('enable_sentiment', document.getElementById('enableSentiment').checked);
-            formData.append('return_confidence', document.getElementById('returnConfidence').checked);
-            formData.append('use_cache', document.getElementById('useCache').checked);
-
-            if (document.getElementById('enableTranslation').checked) {
-                formData.append('target_language', document.getElementById('targetLanguage').value);
-            }
-
-            const apiKey = document.getElementById('apiKey').value.trim();
-
-            // Show loading
-            document.getElementById('loadingIndicator').style.display = 'block';
-            document.getElementById('resultSection').classList.remove('active');
-            document.getElementById('submitBtn').disabled = true;
-
-            try {
-                const headers = {};
-                if (apiKey) {
-                    headers['X-API-Key'] = apiKey;
+                for (const candidate of guesses) {
+                    if (await isApiReachable(candidate)) {
+                        return candidate;
+                    }
                 }
 
-                const response = await fetch(`${API_BASE_URL}/transcribe`, {
-                    method: 'POST',
-                    headers: headers,
-                    body: formData
-                });
+                return guesses[0] || guessBackendBase();
+            }
 
-                const contentType = response.headers.get('content-type');
+            function setActiveView(viewId) {
+                const views = document.querySelectorAll('.view');
+                const navButtons = document.querySelectorAll('nav button');
+                navButtons.forEach(b => b.classList.toggle('active', b.dataset.view === viewId));
+                views.forEach(v => v.classList.toggle('active', v.id === viewId));
 
-                if (contentType && contentType.includes('application/json')) {
-                    const result = await response.json();
-
-                    if (!response.ok) {
-                        throw new Error(result.detail || 'Transcription failed');
-                    }
-
-                    displayResults(result);
+                if (viewId === 'metrics-view') {
+                    loadMetrics();
+                    setLogAutoRefresh(0);
+                } else if (viewId === 'logs-view') {
+                    loadLogs();
+                    setLogAutoRefresh(activeLogInterval || 10000);
                 } else {
-                    // File download (PDF, DOCX, etc.)
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `transcription.${document.getElementById('exportFormat').value}`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-
-                    alert('File downloaded successfully!');
+                    setLogAutoRefresh(0);
                 }
-            } catch (error) {
-                alert('Error: ' + error.message);
-                console.error('Error:', error);
-            } finally {
-                document.getElementById('loadingIndicator').style.display = 'none';
-                document.getElementById('submitBtn').disabled = false;
-            }
-        });
-
-        function displayResults(data) {
-            const resultSection = document.getElementById('resultSection');
-            const statsContainer = document.getElementById('statsContainer');
-            const resultContent = document.getElementById('resultContent');
-
-            // Build stats
-            let statsHTML = '<div class="stats-grid">';
-            statsHTML += `<div class="stat-card"><div class="stat-value">${data.language || 'N/A'}</div><div class="stat-label">Language</div></div>`;
-            if (data.audio_duration) {
-                statsHTML += `<div class="stat-card"><div class="stat-value">${data.audio_duration.toFixed(1)}s</div><div class="stat-label">Duration</div></div>`;
-            }
-            if (data.processing_time) {
-                statsHTML += `<div class="stat-card"><div class="stat-value">${data.processing_time.toFixed(2)}s</div><div class="stat-label">Processing Time</div></div>`;
-            }
-            if (data.segments) {
-                statsHTML += `<div class="stat-card"><div class="stat-value">${data.segments.length}</div><div class="stat-label">Segments</div></div>`;
-            }
-            statsHTML += '</div>';
-
-            // Sentiment
-            if (data.sentiment) {
-                const sentimentClass = data.sentiment.label === 'POSITIVE' ? 'sentiment-positive' : 'sentiment-negative';
-                statsHTML += `<div style="margin-bottom: 20px;">
-                    <strong>Sentiment:</strong>
-                    <span class="sentiment-badge ${sentimentClass}">
-                        ${data.sentiment.label} (${(data.sentiment.score * 100).toFixed(1)}%)
-                    </span>
-                </div>`;
             }
 
-            // Translation
-            if (data.translation) {
-                statsHTML += `<div style="background: white; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
-                    <strong>Translation (${data.translation.target_language}):</strong>
-                    <p style="margin-top: 10px;">${data.translation.text}</p>
-                </div>`;
-            }
-
-            statsContainer.innerHTML = statsHTML;
-
-            // Build segments
-            let contentHTML = '';
-
-            if (data.text) {
-                contentHTML += `<h3 style="margin-bottom: 15px;">Full Transcription:</h3>`;
-                contentHTML += `<p style="line-height: 1.8; margin-bottom: 30px;">${data.text}</p>`;
-            }
-
-            if (data.segments && data.segments.length > 0) {
-                contentHTML += `<h3 style="margin-bottom: 15px;">Detailed Segments:</h3>`;
-
-                data.segments.forEach((segment, index) => {
-                    const confidence = data.confidence_scores && data.confidence_scores[index]
-                        ? data.confidence_scores[index].confidence
-                        : null;
-
-                    contentHTML += `<div class="segment">`;
-                    contentHTML += `<div class="segment-time">${formatTime(segment.start)} - ${formatTime(segment.end)}</div>`;
-
-                    if (segment.speaker) {
-                        contentHTML += `<div class="segment-speaker">Speaker: ${segment.speaker}</div>`;
-                    }
-
-                    contentHTML += `<div class="segment-text">${segment.text}</div>`;
-
-                    if (confidence !== null) {
-                        const confidencePercent = (confidence * 100).toFixed(1);
-                        contentHTML += `<div class="confidence-bar">
-                            <div class="confidence-fill" style="width: ${confidencePercent}%"></div>
-                        </div>`;
-                        contentHTML += `<div style="font-size: 0.85em; color: #666; margin-top: 5px;">Confidence: ${confidencePercent}%</div>`;
-                    }
-
-                    contentHTML += `</div>`;
+            document.querySelectorAll('nav button').forEach(btn => {
+                btn.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    setActiveView(btn.dataset.view);
                 });
+            });
+
+            // Ensure navigation works immediately even if initialization work fails later.
+            setActiveView('speech-view');
+
+            document.getElementById('enableTranslation').addEventListener('change', (e) => {
+                document.getElementById('translationLangGroup').style.display = e.target.checked ? 'block' : 'none';
+            });
+
+            document.getElementById('resetBtn').addEventListener('click', () => {
+                document.getElementById('transcribeForm').reset();
+                document.getElementById('translationLangGroup').style.display = 'none';
+            });
+
+            document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const enteredBase = normalizeApiBase(document.getElementById('apiBase').value) || guessBackendBase();
+                state.apiBase = enteredBase;
+                state.apiKey = document.getElementById('apiKey').value.trim();
+                localStorage.setItem('apiBase', state.apiBase);
+                localStorage.setItem('apiKey', state.apiKey);
+                updateCurlExamples();
+                await loadLanguages();
+                alert('Settings saved.');
+            });
+
+            document.getElementById('clearSettings').addEventListener('click', async () => {
+                localStorage.removeItem('apiBase');
+                localStorage.removeItem('apiKey');
+                state.apiBase = await detectApiBase();
+                state.apiKey = '';
+                document.getElementById('apiBase').value = state.apiBase;
+                document.getElementById('apiKey').value = '';
+                updateCurlExamples();
+                await loadLanguages();
+            });
+
+            function applySettingsToForm() {
+                document.getElementById('apiBase').value = state.apiBase;
+                document.getElementById('apiKey').value = state.apiKey;
+                updateCurlExamples();
             }
 
-            resultContent.innerHTML = contentHTML;
-            resultSection.classList.add('active');
-        }
+            async function loadLanguages() {
+                const select = document.getElementById('language');
+                select.innerHTML = '<option value="">Auto Detect</option>';
+                try {
+                    const res = await fetch(`${state.apiBase}/languages`);
+                    if (!res.ok) throw new Error('Failed to load languages');
+                    const data = await res.json();
+                    (data.supported_languages || []).forEach(lang => {
+                        const opt = document.createElement('option');
+                        opt.value = lang;
+                        opt.textContent = lang;
+                        select.appendChild(opt);
+                    });
+                } catch (err) {
+                    console.warn('Language fetch failed', err);
+                }
+            }
 
-        function formatTime(seconds) {
-            const mins = Math.floor(seconds / 60);
-            const secs = Math.floor(seconds % 60);
-            const ms = Math.floor((seconds % 1) * 1000);
-            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
-        }
+            document.getElementById('transcribeForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const audioFile = document.getElementById('audioFile').files[0];
+                const fileUrl = document.getElementById('fileUrl').value.trim();
+                if (!audioFile && !fileUrl) {
+                    alert('Provide an audio file or a file URL.');
+                    return;
+                }
+
+                const formData = new FormData();
+                if (audioFile) formData.append('file', audioFile);
+                if (fileUrl) formData.append('file_url', fileUrl);
+                const language = document.getElementById('language').value;
+                if (language) formData.append('language', language);
+                const initialPrompt = document.getElementById('initialPrompt').value.trim();
+                if (initialPrompt) formData.append('initial_prompt', initialPrompt);
+                formData.append('export_format', document.getElementById('exportFormat').value);
+                formData.append('enable_diarization', String(document.getElementById('enableDiarization').checked));
+                formData.append('enable_translation', String(document.getElementById('enableTranslation').checked));
+                formData.append('enable_sentiment', String(document.getElementById('enableSentiment').checked));
+                formData.append('return_confidence', String(document.getElementById('returnConfidence').checked));
+                formData.append('use_cache', String(document.getElementById('useCache').checked));
+                const webhookUrl = document.getElementById('webhookUrl').value.trim();
+                if (webhookUrl) formData.append('webhook_url', webhookUrl);
+                const projectId = document.getElementById('projectId').value.trim();
+                if (projectId) formData.append('project_id', projectId);
+                if (document.getElementById('enableTranslation').checked) {
+                    formData.append('target_language', document.getElementById('targetLanguage').value);
+                }
+
+                const headers = {};
+                if (state.apiKey) headers['X-API-Key'] = state.apiKey;
+
+                document.getElementById('submitBtn').disabled = true;
+                document.getElementById('statusBanner').innerHTML = '<div class="status-dot"></div><div><strong>Processing</strong><div class="muted">Uploading audio to the STT engine...</div></div>';
+
+                try {
+                    const response = await fetch(`${state.apiBase}/transcribe`, { method: 'POST', headers, body: formData });
+                    const contentType = response.headers.get('content-type') || '';
+
+                    if (contentType.includes('application/json')) {
+                        const result = await response.json();
+                        if (!response.ok) throw new Error(result.detail || 'Transcription failed');
+                        renderResult(result);
+                        alert('Transcription completed.');
+                    } else {
+                        const blob = await response.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `transcription.${document.getElementById('exportFormat').value}`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                        document.getElementById('resultSummary').textContent = 'File downloaded successfully.';
+                        document.getElementById('resultContainer').style.display = 'none';
+                    }
+                } catch (err) {
+                    alert(err.message);
+                    document.getElementById('statusBanner').innerHTML = '<div class="status-dot" style="background:#ef4444; box-shadow:0 0 0 6px rgba(239,68,68,0.15)"></div><div><strong>Error</strong><div class="muted">' + err.message + '</div></div>';
+                } finally {
+                    document.getElementById('submitBtn').disabled = false;
+                }
+            });
+
+            function renderResult(data) {
+                document.getElementById('resultContainer').style.display = 'block';
+                document.getElementById('resultSummary').textContent = 'Transcription ready. See details below.';
+                const meta = [];
+                if (data.language || data.detected_language) meta.push(`<div class="pill"><strong>Language:</strong> ${data.language || data.detected_language}</div>`);
+                if (data.processing_time) meta.push(`<div class="pill"><strong>Processing:</strong> ${data.processing_time.toFixed(2)}s</div>`);
+                if (data.audio_duration) meta.push(`<div class="pill"><strong>Duration:</strong> ${data.audio_duration.toFixed(1)}s</div>`);
+                if (data.correlation_id) meta.push(`<div class="pill"><strong>Correlation:</strong> ${data.correlation_id}</div>`);
+                document.getElementById('resultMeta').innerHTML = meta.join('');
+                document.getElementById('resultText').textContent = data.text || 'No text returned.';
+
+                const container = document.getElementById('segmentsContainer');
+                container.innerHTML = '';
+                if (Array.isArray(data.segments)) {
+                    data.segments.forEach((segment, idx) => {
+                        const conf = data.confidence_scores && data.confidence_scores[idx] ? data.confidence_scores[idx].confidence : null;
+                        const block = document.createElement('div');
+                        block.className = 'pill';
+                        block.innerHTML = `<div class="muted">${formatTime(segment.start)} - ${formatTime(segment.end)}</div>` +
+                            `<div><strong>${segment.speaker ? 'Speaker ' + segment.speaker : 'Segment'}:</strong> ${segment.text}</div>` +
+                            (conf !== null ? `<div class="muted">Confidence: ${(conf * 100).toFixed(1)}%</div>` : '');
+                        container.appendChild(block);
+                    });
+                }
+            }
+
+            function formatTime(seconds) {
+                if (!seconds && seconds !== 0) return 'n/a';
+                const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+                const secs = Math.floor(seconds % 60).toString().padStart(2, '0');
+                const ms = Math.floor((seconds % 1) * 1000).toString().padStart(3, '0');
+                return `${mins}:${secs}.${ms}`;
+            }
+
+            document.getElementById('refreshJobs').addEventListener('click', loadJobs);
+
+            async function loadJobs() {
+                const query = document.getElementById('jobsQuery').value;
+                const limit = document.getElementById('jobsLimit').value;
+                const headers = {};
+                if (state.apiKey) headers['X-API-Key'] = state.apiKey;
+                const url = `${state.apiBase}/transcriptions/search?query=${encodeURIComponent(query)}&limit=${limit}`;
+                const tbody = document.getElementById('jobsTableBody');
+                tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading...</td></tr>';
+                try {
+                    const res = await fetch(url, { headers });
+                    if (!res.ok) throw new Error('Failed to load jobs');
+                    const data = await res.json();
+                    if (!data.results || data.results.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="7" class="muted">No jobs found.</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = '';
+                    data.results.forEach(job => {
+                        const tr = document.createElement('tr');
+                        const statusClass = job.status === 'COMPLETED' ? 'success' : job.status === 'PENDING' ? 'pending' : 'error';
+                        tr.innerHTML = `
+                            <td title="${job.id}">${job.id.slice(0,8)}...</td>
+                            <td>${job.filename || 'N/A'}</td>
+                            <td><span class="badge ${statusClass}">${job.status || 'COMPLETED'}</span></td>
+                            <td>${job.language || '—'}</td>
+                            <td>${job.created_at ? new Date(job.created_at).toLocaleString() : '—'}</td>
+                            <td>${job.duration ? job.duration.toFixed(1) + 's' : '—'}</td>
+                            <td><button class="btn secondary" data-id="${job.id}">View</button></td>`;
+                        tbody.appendChild(tr);
+                    });
+                    tbody.querySelectorAll('button[data-id]').forEach(btn => btn.addEventListener('click', () => loadJobDetail(btn.dataset.id)));
+                } catch (err) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="muted">${err.message}</td></tr>`;
+                }
+            }
+
+            document.getElementById('logsManual').addEventListener('click', loadLogs);
+            document.querySelectorAll('[data-log-interval]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const ms = parseInt(btn.dataset.logInterval, 10) || 0;
+                    setLogAutoRefresh(ms);
+                    loadLogs();
+                });
+            });
+
+            function setLogAutoRefresh(ms) {
+                if (logIntervalId) {
+                    clearInterval(logIntervalId);
+                    logIntervalId = null;
+                }
+
+                document.querySelectorAll('[data-log-interval]').forEach(btn => btn.classList.remove('active'));
+
+                if (ms > 0) {
+                    const activeBtn = document.querySelector(`[data-log-interval="${ms}"]`);
+                    if (activeBtn) activeBtn.classList.add('active');
+                    logIntervalId = setInterval(loadLogs, ms);
+                }
+
+                activeLogInterval = ms;
+            }
+
+            async function loadLogs() {
+                const output = document.getElementById('logsOutput');
+                const status = document.getElementById('logsStatus');
+                const headers = {};
+                if (state.apiKey) headers['X-API-Key'] = state.apiKey;
+
+                status.textContent = 'Loading...';
+                try {
+                    const res = await fetch(`${state.apiBase}/logs?limit=1000`, { headers });
+                    if (!res.ok) throw new Error('Failed to load logs');
+                    const data = await res.json();
+                    const lines = Array.isArray(data.lines) ? data.lines : [];
+                    output.textContent = lines.map(line => line.message || '').join('\n');
+                    if (lines.length === 0) {
+                        output.textContent = 'No logs available yet.';
+                    }
+                    status.textContent = `Showing ${Math.min(lines.length, 1000)} lines • Updated ${new Date().toLocaleTimeString()}`;
+                } catch (err) {
+                    output.textContent = err.message;
+                    status.textContent = '';
+                }
+            }
+
+            async function loadMetrics() {
+                await Promise.all([
+                    loadHealth(),
+                    loadAnalytics(),
+                    loadOrgAnalytics(),
+                    loadPrometheus()
+                ]);
+            }
+
+            async function loadHealth() {
+                const summary = document.getElementById('healthSummary');
+                const details = document.getElementById('healthDetails');
+                summary.textContent = 'Loading health...';
+                details.innerHTML = '';
+                try {
+                    const res = await fetch(`${state.apiBase}/health`);
+                    if (!res.ok) throw new Error('Failed to load health');
+                    const data = await res.json();
+                    summary.textContent = data.status ? `Status: ${data.status}` : 'Status unavailable';
+                    const pills = [];
+                    pills.push(`<div class="pill"><strong>Model:</strong> ${data.model || 'n/a'}</div>`);
+                    pills.push(`<div class="pill"><strong>Device:</strong> ${data.device || 'n/a'}</div>`);
+                    if (data.features) {
+                        pills.push(`<div class="pill"><strong>Database:</strong> ${data.features.database}</div>`);
+                        pills.push(`<div class="pill"><strong>Caching:</strong> ${data.features.caching}</div>`);
+                        pills.push(`<div class="pill"><strong>Async:</strong> ${data.features.async_processing}</div>`);
+                        pills.push(`<div class="pill"><strong>Metrics:</strong> ${data.features.metrics ? 'enabled' : 'disabled'}</div>`);
+                    }
+                    details.innerHTML = pills.join('');
+                } catch (err) {
+                    summary.textContent = err.message;
+                }
+            }
+
+            async function loadAnalytics() {
+                const summary = document.getElementById('analyticsSummary');
+                const details = document.getElementById('analyticsDetails');
+                summary.textContent = 'Loading analytics...';
+                details.innerHTML = '';
+                try {
+                    const headers = {};
+                    if (state.apiKey) headers['X-API-Key'] = state.apiKey;
+                    const res = await fetch(`${state.apiBase}/analytics`, { headers });
+                    if (!res.ok) throw new Error('Failed to load analytics');
+                    const data = await res.json();
+                    summary.textContent = `${data.total_requests || 0} total requests (${data.successful_requests || 0} successful)`;
+                    const pills = [];
+                    pills.push(`<div class="pill"><strong>Failures:</strong> ${data.failed_requests || 0}</div>`);
+                    pills.push(`<div class="pill"><strong>Success Rate:</strong> ${((data.success_rate || 0) * 100).toFixed(1)}%</div>`);
+                    pills.push(`<div class="pill"><strong>Avg Processing:</strong> ${(data.average_processing_time || 0).toFixed(2)}s</div>`);
+                    if (data.cache_statistics) {
+                        pills.push(`<div class="pill"><strong>Cache Hit Rate:</strong> ${((data.cache_statistics.hit_rate || 0) * 100).toFixed(1)}%</div>`);
+                        pills.push(`<div class="pill"><strong>Cache Hits:</strong> ${data.cache_statistics.hits || 0}</div>`);
+                        pills.push(`<div class="pill"><strong>Cache Misses:</strong> ${data.cache_statistics.misses || 0}</div>`);
+                    }
+                    details.innerHTML = pills.join('');
+                } catch (err) {
+                    summary.textContent = err.message;
+                }
+            }
+
+            async function loadOrgAnalytics() {
+                const summary = document.getElementById('orgAnalyticsSummary');
+                const details = document.getElementById('orgAnalyticsDetails');
+                summary.textContent = 'Loading usage...';
+                details.innerHTML = '';
+                if (!state.apiKey) {
+                    summary.textContent = 'Provide an API key to view organization usage.';
+                    return;
+                }
+                try {
+                    const headers = { 'X-API-Key': state.apiKey };
+                    const res = await fetch(`${state.apiBase}/usage/analytics`, { headers });
+                    if (!res.ok) throw new Error('Failed to load usage analytics');
+                    const data = await res.json();
+                    summary.textContent = `${data.total_requests || 0} requests • ${(data.total_duration_minutes || 0).toFixed(1)} min • ${(data.total_cost_cents || 0)}¢`;
+                    const pills = [];
+                    if (data.features_usage) {
+                        pills.push(`<div class="pill"><strong>Diarization:</strong> ${data.features_usage.diarization || 0}</div>`);
+                        pills.push(`<div class="pill"><strong>Translation:</strong> ${data.features_usage.translation || 0}</div>`);
+                        pills.push(`<div class="pill"><strong>Sentiment:</strong> ${data.features_usage.sentiment || 0}</div>`);
+                    }
+                    details.innerHTML = pills.join('');
+                } catch (err) {
+                    summary.textContent = err.message;
+                }
+            }
+
+            async function loadPrometheus() {
+                const pre = document.getElementById('prometheusMetrics');
+                pre.textContent = 'Loading...';
+                try {
+                    const res = await fetch(`${state.apiBase}/metrics`);
+                    if (!res.ok) throw new Error('Metrics unavailable');
+                    const text = await res.text();
+                    pre.textContent = text.slice(0, 4000) + (text.length > 4000 ? '\n... (truncated)' : '');
+                } catch (err) {
+                    pre.textContent = err.message;
+                }
+            }
+
+            async function loadJobDetail(id) {
+                const headers = {};
+                if (state.apiKey) headers['X-API-Key'] = state.apiKey;
+                const pre = document.getElementById('jobDetailPre');
+                document.getElementById('jobDetail').style.display = 'block';
+                pre.textContent = 'Loading job ' + id + '...';
+                try {
+                    const res = await fetch(`${state.apiBase}/transcriptions/${id}`, { headers });
+                    if (!res.ok) throw new Error('Failed to fetch job');
+                    const data = await res.json();
+                    pre.textContent = JSON.stringify(data, null, 2);
+                } catch (err) {
+                    pre.textContent = err.message;
+                }
+            }
+
+            function updateCurlExamples() {
+                const keyHeader = state.apiKey ? `-H "X-API-Key: ${state.apiKey}" ` : '';
+                document.getElementById('curlTranscribe').textContent = `curl -X POST ${state.apiBase}/transcribe \\\n${keyHeader ? '  ' + keyHeader + '\n' : ''}  -F "file=@/path/audio.wav" \\\n  -F "language=en" -F "enable_diarization=true" -F "enable_translation=true" -F "target_language=es" -F "enable_sentiment=true"`;
+                document.getElementById('curlSearch').textContent = `curl -X GET "${state.apiBase}/transcriptions/search?query=call&limit=10" ${keyHeader}`.trim();
+                document.getElementById('curlGet').textContent = `curl -X GET ${state.apiBase}/transcriptions/{id} ${keyHeader}`.trim();
+                document.getElementById('curlLanguages').textContent = `curl -X GET ${state.apiBase}/languages`;
+            }
+
+            async function initializeDashboard() {
+                try {
+                    state.apiBase = await detectApiBase();
+                    applySettingsToForm();
+                    await loadLanguages();
+                    loadJobs();
+                    loadMetrics();
+                } catch (err) {
+                    console.error('Dashboard initialization failed', err);
+                    document.getElementById('statusBanner').innerHTML = '<div class="status-dot" style="background:#ef4444; box-shadow:0 0 0 6px rgba(239,68,68,0.15)"></div><div><strong>Initialization failed</strong><div class="muted">' + (err.message || 'See console for details') + '</div></div>';
+                } finally {
+                    const activeButton = document.querySelector('nav button.active');
+                    setActiveView(activeButton ? activeButton.dataset.view : 'speech-view');
+                }
+            }
+
+            initializeDashboard();
+        });
     </script>
+
+
 </body>
 </html>

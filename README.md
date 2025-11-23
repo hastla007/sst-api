@@ -315,10 +315,18 @@ AZURE_CONTAINER=stt-audio-files
 #### Speaker Diarization
 ```bash
 HUGGINGFACE_TOKEN=your-hf-token  # Required for pyannote models
+DIARIZATION_MODEL=pyannote/speaker-diarization-3.1
 ```
 
+> **Note:** If you previously set `pyannote/speaker-diarization` (or `-3.0`),
+> the app now upgrades that value automatically to `pyannote/speaker-diarization-3.1`
+> to avoid loading the deprecated pipeline that still depends on `speechbrain`.
+
 Get your token from: https://huggingface.co/settings/tokens
-Accept model license: https://huggingface.co/pyannote/speaker-diarization
+Accept model licenses:
+- https://huggingface.co/pyannote/speaker-diarization-3.1
+- https://huggingface.co/pyannote/segmentation-3.0
+- https://huggingface.co/pyannote/embedder-3.0
 
 ---
 
