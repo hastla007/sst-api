@@ -171,6 +171,10 @@
         code { background: #0f172a; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
         pre { background: #0f172a; padding: 12px; border-radius: 12px; border: 1px solid var(--border); overflow-x: auto; }
 
+        .log-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+        .log-controls button.active { background: var(--primary); color: #ffffff; border-color: var(--primary); }
+        .logs-output { background: #0f172a; border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-height: 260px; max-height: 520px; overflow: auto; }
+
         .status-banner { background: rgba(107,91,255,0.12); border: 1px solid rgba(107,91,255,0.35); color: #cbd5f5; padding: 12px 16px; border-radius: 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
         .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 6px rgba(34,197,94,0.1); }
 
@@ -207,6 +211,7 @@
                 <button class="active" data-view="speech-view">Speech-to-Text</button>
                 <button data-view="jobs-view">SST Jobs</button>
                 <button data-view="metrics-view">Metrics</button>
+                <button data-view="logs-view">Logs</button>
                 <button data-view="settings-view">Settings</button>
                 <button data-view="docs-view">API Documentation</button>
             </nav>
@@ -373,6 +378,23 @@
             </div>
         </section>
 
+        <section class="view" id="logs-view">
+            <div class="panel">
+                <h2>Logs</h2>
+                <p>Inspect the last 1000 log lines from the API service for quick troubleshooting.</p>
+                <div class="card">
+                    <div class="log-controls">
+                        <button class="btn secondary" id="logsManual">⟳ Manual Refresh</button>
+                        <button class="btn secondary" data-log-interval="5000">Auto 5s</button>
+                        <button class="btn secondary" data-log-interval="10000">Auto 10s</button>
+                        <button class="btn secondary" data-log-interval="30000">Auto 30s</button>
+                        <span id="logsStatus" class="muted"></span>
+                    </div>
+                    <div class="logs-output" id="logsOutput" aria-live="polite">No logs loaded yet.</div>
+                </div>
+            </div>
+        </section>
+
         <section class="view" id="settings-view">
             <div class="panel">
                 <h2>Settings</h2>
@@ -479,6 +501,9 @@
             apiKey: localStorage.getItem('apiKey') || ''
         };
 
+        let logIntervalId = null;
+        let activeLogInterval = 0;
+
         const views = document.querySelectorAll('.view');
         document.querySelectorAll('nav button').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -490,6 +515,12 @@
 
                 if (btn.dataset.view === 'metrics-view') {
                     loadMetrics();
+                    setLogAutoRefresh(0);
+                } else if (btn.dataset.view === 'logs-view') {
+                    loadLogs();
+                    setLogAutoRefresh(activeLogInterval || 10000);
+                } else {
+                    setLogAutoRefresh(0);
                 }
             });
         });
@@ -684,6 +715,57 @@
                 tbody.querySelectorAll('button[data-id]').forEach(btn => btn.addEventListener('click', () => loadJobDetail(btn.dataset.id)));
             } catch (err) {
                 tbody.innerHTML = `<tr><td colspan="7" class="muted">${err.message}</td></tr>`;
+            }
+        }
+
+        document.getElementById('logsManual').addEventListener('click', loadLogs);
+        document.querySelectorAll('[data-log-interval]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const ms = parseInt(btn.dataset.logInterval, 10) || 0;
+                setLogAutoRefresh(ms);
+                loadLogs();
+            });
+        });
+
+        function setLogAutoRefresh(ms) {
+            if (logIntervalId) {
+                clearInterval(logIntervalId);
+                logIntervalId = null;
+            }
+        }
+
+            document.querySelectorAll('[data-log-interval]').forEach(btn => btn.classList.remove('active'));
+
+            if (ms > 0) {
+                const activeBtn = document.querySelector(`[data-log-interval="${ms}"]`);
+                if (activeBtn) activeBtn.classList.add('active');
+                logIntervalId = setInterval(loadLogs, ms);
+            }
+        }
+
+            activeLogInterval = ms;
+        }
+
+        async function loadLogs() {
+            const output = document.getElementById('logsOutput');
+            const status = document.getElementById('logsStatus');
+            const headers = {};
+            if (state.apiKey) headers['X-API-Key'] = state.apiKey;
+
+            status.textContent = 'Loading...';
+            try {
+                const res = await fetch(`${state.apiBase}/logs?limit=1000`, { headers });
+                if (!res.ok) throw new Error('Failed to load logs');
+                const data = await res.json();
+                const lines = Array.isArray(data.lines) ? data.lines : [];
+                output.textContent = lines.map(line => line.message || '').join('\n');
+                if (lines.length === 0) {
+                    output.textContent = 'No logs available yet.';
+                }
+                status.textContent = `Showing ${Math.min(lines.length, 1000)} lines • Updated ${new Date().toLocaleTimeString()}`;
+            } catch (err) {
+                output.textContent = err.message;
+                status.textContent = '';
             }
         }
 
