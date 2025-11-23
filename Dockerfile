@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+# Copy application source
+COPY . .
 
 # Pre-download Whisper model (optional, saves time on first run)
 # RUN python -c "import whisper; whisper.load_model('base')"
