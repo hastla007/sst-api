@@ -204,6 +204,7 @@ CELERY_BACKEND = os.getenv("CELERY_BACKEND", f"redis://{REDIS_HOST}:{REDIS_PORT}
 # GPU Configuration
 USE_GPU = os.getenv("USE_GPU", "false").lower() == "true"
 DEVICE = "cuda" if USE_GPU else "cpu"
+DIARIZATION_DEVICE = "cpu"  # FORCE CPU
 
 # Cloud Storage Configuration
 AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID", "")
@@ -375,13 +376,10 @@ if DIARIZATION_AVAILABLE and HF_TOKEN:
         logger.info("Loading diarization pipeline: %s", DIARIZATION_MODEL)
         diarization_pipeline = Pipeline.from_pretrained(
             DIARIZATION_MODEL,
-            segmentation="pyannote/segmentation-3.0",
-            embedding="pyannote/embedder-3.0",
             use_auth_token=HF_TOKEN,
         )
-        if USE_GPU:
-            import torch
-            diarization_pipeline.to(torch.device("cuda"))
+        import torch
+        diarization_pipeline.to(torch.device(DIARIZATION_DEVICE))
         logger.info("Diarization pipeline loaded successfully")
     except Exception as e:
         logger.warning(f"Failed to load diarization pipeline: {e}")
@@ -450,10 +448,11 @@ async def verify_api_key(
         return None
 
     if not x_api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Missing API key. Please provide X-API-Key header."
-        )
+        # Auth is enabled, but API key is optional for endpoints that don't
+        # explicitly require it. Return None so callers can decide whether to
+        # enforce authentication (e.g., project creation) or allow anonymous
+        # access with IP-based rate limiting.
+        return None
 
     # Check database for API key
     try:
