@@ -1,22 +1,42 @@
-__pycache__
+# Python caches
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
 *.so
-*.egg
-*.egg-info
-dist
-build
+
+# Python envs
 .env
 .venv
 venv/
 env/
-.git
+
+# Build / dist artifacts
+dist/
+build/
+*.egg
+*.egg-info
+
+# Git + repo files
+.git/
 .gitignore
+*.md
 README.md
+
+# Docker files
 docker-compose.yml
 .dockerignore
-*.md
+
+# Temporary files
 temp/
 models/
+
+# HuggingFace + ML cache
+.cache/
+*.cache/
+transformers_cache/
+**/transformers_cache/
+**/.cache/
+
+# System + editor junk
+.DS_Store
