@@ -170,6 +170,13 @@ Transcribe audio files with all enterprise features.
 - `use_cache` - Use cached results (boolean, default: true)
 - `project_id` - Project ID for organization (optional)
 
+**Authentication:**
+- When API authentication is enabled (`API_KEYS` set), include `X-API-Key` to
+  attribute usage to your organization and apply per-key rate limits.
+- If you don't provide a key, the request is still processed with IP-based rate
+  limiting, but endpoints that explicitly require a key (e.g., project
+  creation) will return `401`.
+
 **Example using curl:**
 ```bash
 curl -X POST "http://localhost:3008/transcribe" \

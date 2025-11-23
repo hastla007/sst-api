@@ -448,10 +448,11 @@ async def verify_api_key(
         return None
 
     if not x_api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="Missing API key. Please provide X-API-Key header."
-        )
+        # Auth is enabled, but API key is optional for endpoints that don't
+        # explicitly require it. Return None so callers can decide whether to
+        # enforce authentication (e.g., project creation) or allow anonymous
+        # access with IP-based rate limiting.
+        return None
 
     # Check database for API key
     try:
