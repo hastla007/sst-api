@@ -118,6 +118,21 @@ class CorrelationIdFilter(logging.Filter):
             record.correlation_id = 'N/A'
         return True
 
+
+old_record_factory = logging.getLogRecordFactory()
+
+
+def record_factory(*args, **kwargs):
+    """Ensure every log record has correlation_id to avoid formatting errors."""
+
+    record = old_record_factory(*args, **kwargs)
+    if not hasattr(record, 'correlation_id'):
+        record.correlation_id = 'N/A'
+    return record
+
+
+logging.setLogRecordFactory(record_factory)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] %(message)s'
