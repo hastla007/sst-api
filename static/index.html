@@ -413,18 +413,53 @@
     </main>
 
     <script>
-        function getDefaultApiBase() {
-            const stored = localStorage.getItem('apiBase');
-            if (stored) return stored;
+        function normalizeApiBase(value) {
+            if (!value) return null;
+            try {
+                const url = new URL(value, window.location.origin);
+                const portPart = url.port ? `:${url.port}` : '';
+                return `${url.protocol}//${url.hostname}${portPart}`;
+            } catch (err) {
+                console.warn('Invalid API base provided, falling back to default.', err);
+                return null;
+            }
+        }
+
+        function guessBackendBase() {
             const { protocol, hostname, port } = window.location;
             if (port === '8005') {
                 return `${protocol}//${hostname}:8004`;
             }
-            return window.location.origin;
+            return `${protocol}//${hostname}${port ? ':' + port : ''}`;
+        }
+
+        async function detectApiBase() {
+            const stored = normalizeApiBase(localStorage.getItem('apiBase'));
+            const guesses = [stored, guessBackendBase(), `${window.location.protocol}//${window.location.hostname}:8004`]
+                .filter(Boolean)
+                .filter((v, idx, arr) => arr.indexOf(v) === idx);
+
+            for (const candidate of guesses) {
+                if (await isApiReachable(candidate)) {
+                    return candidate;
+                }
+            }
+
+            return guesses[0];
+        }
+
+        async function isApiReachable(base) {
+            try {
+                const res = await fetch(`${base}/languages`);
+                return res.ok;
+            } catch (err) {
+                console.warn(`API base ${base} not reachable`, err);
+                return false;
+            }
         }
 
         const state = {
-            apiBase: getDefaultApiBase(),
+            apiBase: guessBackendBase(),
             apiKey: localStorage.getItem('apiKey') || ''
         };
 
@@ -452,24 +487,27 @@
             document.getElementById('translationLangGroup').style.display = 'none';
         });
 
-        document.getElementById('settingsForm').addEventListener('submit', (e) => {
+        document.getElementById('settingsForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            state.apiBase = document.getElementById('apiBase').value || getDefaultApiBase();
+            const enteredBase = normalizeApiBase(document.getElementById('apiBase').value) || guessBackendBase();
+            state.apiBase = enteredBase;
             state.apiKey = document.getElementById('apiKey').value.trim();
             localStorage.setItem('apiBase', state.apiBase);
             localStorage.setItem('apiKey', state.apiKey);
             updateCurlExamples();
+            await loadLanguages();
             alert('Settings saved.');
         });
 
-        document.getElementById('clearSettings').addEventListener('click', () => {
+        document.getElementById('clearSettings').addEventListener('click', async () => {
             localStorage.removeItem('apiBase');
             localStorage.removeItem('apiKey');
-            state.apiBase = getDefaultApiBase();
+            state.apiBase = await detectApiBase();
             state.apiKey = '';
             document.getElementById('apiBase').value = state.apiBase;
             document.getElementById('apiKey').value = '';
             updateCurlExamples();
+            await loadLanguages();
         });
 
         function applySettingsToForm() {
@@ -758,12 +796,16 @@
             document.getElementById('curlLanguages').textContent = `curl -X GET ${state.apiBase}/languages`;
         }
 
-        // Initialize
-        applySettingsToForm();
-        loadLanguages();
-        loadJobs();
-        updateCurlExamples();
-        loadMetrics();
+        async function initializeDashboard() {
+            state.apiBase = await detectApiBase();
+            applySettingsToForm();
+            updateCurlExamples();
+            await loadLanguages();
+            loadJobs();
+            loadMetrics();
+        }
+
+        initializeDashboard();
     </script>
 </body>
 </html>
